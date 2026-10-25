@@ -95,6 +95,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
         <section class="toolbar" aria-label="اطلاعات فهرست">
             <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> کالا</p>
             <p>صفحه <?= e(number_format($page)) ?> از <?= e(number_format($totalPages)) ?></p>
+            <p><a class="report-link" href="no-images.php">گزارش کالاهای بدون تصویر و خروجی Excel</a></p>
         </section>
         <div class="table-wrap">
             <table>
