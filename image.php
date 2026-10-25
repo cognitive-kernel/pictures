@@ -10,6 +10,7 @@ if ($id === false || $id === null || $id < 1) {
     http_response_code(400);
     exit('Invalid image identifier.');
 }
+$isThumbnail = isset($_GET['thumb']) && $_GET['thumb'] === '1';
 
 try {
     $pdo = Database::connection();
@@ -27,7 +28,9 @@ try {
         http_response_code(404);
         exit('Image not found.');
     }
-    if (is_resource($content)) $content = stream_get_contents($content);
+    if (is_resource($content)) {
+        $content = stream_get_contents($content);
+    }
     if (!is_string($content) || $content === '') {
         http_response_code(404);
         exit('Image not found.');
@@ -39,6 +42,35 @@ try {
     if (!in_array($mime, $allowedTypes, true)) {
         http_response_code(415);
         exit('Unsupported image format.');
+    }
+
+    // Generate lightweight JPEG thumbnails when GD is available.
+    if ($isThumbnail && extension_loaded('gd')) {
+        $source = @imagecreatefromstring($content);
+        if ($source !== false) {
+            $sourceWidth = imagesx($source);
+            $sourceHeight = imagesy($source);
+            if ($sourceWidth > 0 && $sourceHeight > 0) {
+                $scale = min(1, 180 / $sourceWidth, 140 / $sourceHeight);
+                $targetWidth = max(1, (int)round($sourceWidth * $scale));
+                $targetHeight = max(1, (int)round($sourceHeight * $scale));
+                $thumbnail = imagecreatetruecolor($targetWidth, $targetHeight);
+                $white = imagecolorallocate($thumbnail, 255, 255, 255);
+                imagefill($thumbnail, 0, 0, $white);
+                imagecopyresampled(
+                    $thumbnail, $source, 0, 0, 0, 0,
+                    $targetWidth, $targetHeight, $sourceWidth, $sourceHeight
+                );
+                header('Content-Type: image/jpeg');
+                header('X-Content-Type-Options: nosniff');
+                header('Cache-Control: private, max-age=300');
+                imagejpeg($thumbnail, null, 78);
+                imagedestroy($thumbnail);
+                imagedestroy($source);
+                exit;
+            }
+            imagedestroy($source);
+        }
     }
 
     header('Content-Type: ' . $mime);
