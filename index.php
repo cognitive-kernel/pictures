@@ -19,12 +19,41 @@ $orderBy = $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', p.ProductID 
 
 $products = [];
 $total = 0;
+$allTotal = 0;
 $errorMessage = null;
 $totalPages = 1;
+$search = trim((string)($_GET['q'] ?? ''));
+if (mb_strlen($search, 'UTF-8') > 100) {
+    $search = mb_substr($search, 0, 100, 'UTF-8');
+}
+$imageFilter = (string)($_GET['image'] ?? 'all');
+if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
+    $imageFilter = 'all';
+}
 
 try {
     $pdo = Database::connection();
-    $total = (int)$pdo->query('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p')->fetchColumn();
+    $allTotal = (int)$pdo->query('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p')->fetchColumn();
+
+    $where = [];
+    $params = [];
+    if ($search !== '') {
+        $where[] = '(CONVERT(NVARCHAR(255), p.Number) LIKE :searchNumber OR p.Name LIKE :searchName)';
+        $params[':searchNumber'] = '%' . $search . '%';
+        $params[':searchName'] = '%' . $search . '%';
+    }
+    if ($imageFilter === 'with') {
+        $where[] = 'EXISTS (SELECT 1 FROM [SLS3].[ProductAttachment] pa WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL)';
+    } elseif ($imageFilter === 'without') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM [SLS3].[ProductAttachment] pa WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL)';
+    }
+    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+    $countStatement = $pdo->prepare('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p' . $whereSql);
+    foreach ($params as $key => $value) {
+        $countStatement->bindValue($key, $value, PDO::PARAM_STR);
+    }
+    $countStatement->execute();
+    $total = (int)$countStatement->fetchColumn();
     $totalPages = max(1, (int)ceil($total / PAGE_SIZE));
     $page = min($page, $totalPages);
     $offset = ($page - 1) * PAGE_SIZE;
@@ -39,10 +68,14 @@ try {
             WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL
             ORDER BY pa.ProductRef
         ) img
+        {$whereSql}
         ORDER BY {$orderBy}
         OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
     ";
     $statement = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        $statement->bindValue($key, $value, PDO::PARAM_STR);
+    }
     $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
     $statement->bindValue(':pageSize', PAGE_SIZE, PDO::PARAM_INT);
     $statement->execute();
@@ -80,7 +113,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <h1>گالری تصاویر کالاها</h1>
             <p class="subtitle">مشاهده کالاها و تصاویر پیوست‌شده در سیستم راهکاران</p>
         </div>
-        <div class="total-box"><span>تعداد کل کالاها</span><strong><?= e(number_format($total)) ?></strong></div>
+        <div class="total-box"><span>تعداد کل کالاها</span><strong><?= e(number_format($allTotal)) ?></strong></div>
     </div>
 </header>
 
@@ -92,8 +125,26 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <p class="hint">در XAMPP بررسی کنید افزونه pdo_sqlsrv فعال باشد و فایل config/database.local.php تنظیم شده باشد.</p>
         </section>
     <?php else: ?>
+        <form class="filters" method="get" action="index.php">
+            <div class="filter-search">
+                <label for="q">جستجو بر اساس کد یا نام کالا</label>
+                <input id="q" name="q" type="search" maxlength="100" value="<?= e($search) ?>" placeholder="کد یا بخشی از نام کالا">
+            </div>
+            <div class="filter-status">
+                <label for="image">وضعیت تصویر</label>
+                <select id="image" name="image">
+                    <option value="all" <?= $imageFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
+                    <option value="with" <?= $imageFilter === 'with' ? 'selected' : '' ?>>فقط کالاهای دارای تصویر</option>
+                    <option value="without" <?= $imageFilter === 'without' ? 'selected' : '' ?>>فقط کالاهای بدون تصویر</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button type="submit" class="report-link">اعمال فیلتر</button>
+                <a class="report-link" href="index.php">پاک کردن</a>
+            </div>
+        </form>
         <section class="toolbar" aria-label="اطلاعات فهرست">
-            <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> کالا</p>
+            <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> نتیجه</p>
             <p>صفحه <?= e(number_format($page)) ?> از <?= e(number_format($totalPages)) ?></p>
             <p><a class="report-link" href="no-images.php">گزارش کالاهای بدون تصویر و خروجی Excel</a></p>
         </section>
