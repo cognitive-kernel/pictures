@@ -1,0 +1,15 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Copy this file to database.local.php and enter your local credentials.
+ * Never commit database.local.php or real credentials.
+ */
+return [
+    'server' => '192.168.1.100',
+    'database' => 'Rahkaran_sg3',
+    'username' => 'YOUR_SQL_USERNAME',
+    'password' => 'YOUR_SQL_PASSWORD',
+    'trust_server_certificate' => true,
+    'login_timeout' => 5,
+];
