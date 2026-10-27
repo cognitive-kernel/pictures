@@ -15,7 +15,6 @@ $allowedSorts = ['number' => 'gallery.Number', 'name' => 'gallery.Name'];
 $sort = (string)($_GET['sort'] ?? 'number');
 if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-$orderBy = $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', p.ProductID ASC';
 
 $products = [];
 $total = 0;
