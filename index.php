@@ -53,9 +53,8 @@ try {
     ")->fetchColumn();
 
     if ($imageFilter === 'without') {
-        // A product may have no attachment row at all, so the no-image
-        // filter must start from Product and exclude any non-empty image
-        // found by the required attachment-first source.
+        // A product is image-less only when no non-empty attachment exists
+        // directly for its ProductID. Avoid matching via display codes/names.
         $sourceSql = "
             SELECT p.ProductID,
                    COALESCE(gp.Code, p.Number) AS Number,
@@ -65,17 +64,30 @@ try {
             LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
             WHERE NOT EXISTS (
                 SELECT 1
-                FROM ({$attachmentQuery}) imageData
-                WHERE imageData.ProductID = p.ProductID
-                  AND DATALENGTH(imageData.FileContent) > 0
+                FROM [SLS3].[ProductAttachment] pa
+                WHERE pa.ProductRef = p.ProductID
+                  AND DATALENGTH(pa.FileContent) > 0
+            )
+        ";
+    } elseif ($imageFilter === 'with') {
+        // Return each product exactly once when at least one usable image exists.
+        $sourceSql = "
+            SELECT p.ProductID,
+                   COALESCE(gp.Code, p.Number) AS Number,
+                   COALESCE(gp.Name, p.Name) AS Name,
+                   CAST(1 AS INT) AS HasImage
+            FROM [SLS3].[Product] p
+            LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+            WHERE EXISTS (
+                SELECT 1
+                FROM [SLS3].[ProductAttachment] pa
+                WHERE pa.ProductRef = p.ProductID
+                  AND DATALENGTH(pa.FileContent) > 0
             )
         ";
     } else {
-        // Collapse multiple attachment rows into one product row. A product
-        // is image-bearing if at least one attachment has non-empty content.
-        $contentFilter = $imageFilter === 'with'
-            ? 'WHERE DATALENGTH(imageData.FileContent) > 0'
-            : '';
+        // "All" means all products that have at least one attachment row,
+        // retaining the attachment-first gallery source and unique products.
         $sourceSql = "
             SELECT raw.ProductID,
                    MAX(raw.Number) AS Number,
@@ -85,10 +97,9 @@ try {
                 SELECT imageData.ProductID,
                        COALESCE(imageData.Code, p.Number) AS Number,
                        COALESCE(imageData.Name, p.Name) AS Name,
-                       CASE WHEN imageData.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
+                       CASE WHEN DATALENGTH(imageData.FileContent) > 0 THEN 1 ELSE 0 END AS HasImage
                 FROM ({$attachmentQuery}) imageData
                 LEFT JOIN [SLS3].[Product] p ON p.ProductID = imageData.ProductID
-                {$contentFilter}
             ) raw
             WHERE raw.ProductID IS NOT NULL
             GROUP BY raw.ProductID
