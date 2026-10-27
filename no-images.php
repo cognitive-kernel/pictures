@@ -11,7 +11,7 @@ const PAGE_SIZE = 50;
 try {
     $pdo = Database::connection();
     $attachmentQuery = "
-        SELECT gp.Code, gp.Name, pa.FileContent
+        SELECT gp.Code, gp.Name, pa.FileContent, p.ProductID
         FROM [SLS3].[ProductAttachment] pa
         LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
         LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
@@ -22,7 +22,7 @@ try {
         WHERE NOT EXISTS (
             SELECT 1
             FROM ({$attachmentQuery}) imageData
-            WHERE imageData.Code = COALESCE(gp.Code, p.Number)
+            WHERE imageData.ProductID = p.ProductID
               AND imageData.FileContent IS NOT NULL
         )
     ";
