@@ -23,7 +23,7 @@ try {
             SELECT 1
             FROM ({$attachmentQuery}) imageData
             WHERE imageData.ProductID = p.ProductID
-              AND imageData.FileContent IS NOT NULL
+              AND DATALENGTH(imageData.FileContent) > 0
         )
     ";
 
