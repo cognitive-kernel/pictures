@@ -10,19 +10,26 @@ const PAGE_SIZE = 50;
 
 try {
     $pdo = Database::connection();
+    $attachmentQuery = "
+        SELECT gp.Code, gp.Name, pa.FileContent
+        FROM [SLS3].[ProductAttachment] pa
+        LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
+        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+    ";
     $baseSql = "
         FROM [SLS3].[Product] p
+        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
         WHERE NOT EXISTS (
             SELECT 1
-            FROM [SLS3].[ProductAttachment] pa
-            WHERE pa.ProductRef = p.ProductID
-              AND pa.FileContent IS NOT NULL
+            FROM ({$attachmentQuery}) imageData
+            WHERE imageData.Code = COALESCE(gp.Code, p.Number)
+              AND imageData.FileContent IS NOT NULL
         )
     ";
 
     if (($_GET['export'] ?? '') === 'csv') {
         $statement = $pdo->query("
-            SELECT p.Number, p.Name
+            SELECT COALESCE(gp.Code, p.Number) AS Number, COALESCE(gp.Name, p.Name) AS Name
             {$baseSql}
             ORDER BY p.Number, p.ProductID
         ");
@@ -52,7 +59,7 @@ try {
     $offset = ($pageNumber - 1) * PAGE_SIZE;
 
     $statement = $pdo->prepare("
-        SELECT p.Number, p.Name
+        SELECT COALESCE(gp.Code, p.Number) AS Number, COALESCE(gp.Name, p.Name) AS Name
         {$baseSql}
         ORDER BY p.Number, p.ProductID
         OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
