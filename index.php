@@ -32,44 +32,59 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
 
 try {
     $pdo = Database::connection();
-    // The product table is the canonical source so products without attachments
-    // remain searchable and appear in the "without image" filter.
-    $allTotal = (int)$pdo->query("
-        SELECT COUNT_BIG(*)
-        FROM [SLS3].[Product] p
-    ")->fetchColumn();
-
-    $sourceSql = "
-        SELECT p.ProductID,
-               COALESCE(gp.Code, p.Number) AS Number,
-               COALESCE(gp.Name, p.Name) AS Name,
-               CASE WHEN EXISTS (
-                   SELECT 1
-                   FROM [SLS3].[ProductAttachment] pa
-                   WHERE pa.ProductRef = p.ProductID
-                     AND DATALENGTH(pa.FileContent) > 0
-               ) THEN 1 ELSE 0 END AS HasImage
-        FROM [SLS3].[Product] p
+    // Canonical gallery source: attachments joined to their product and part.
+    // ProductRef is kept as an internal identifier for image.php.
+    $attachmentQuery = "
+        SELECT gp.Code, gp.Name, pa.FileContent, pa.ProductRef AS ProductID
+        FROM [SLS3].[ProductAttachment] pa
+        LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
         LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
     ";
 
+    // Count unique products represented by the attachment-first query.
+    $allTotal = (int)$pdo->query("
+        SELECT COUNT_BIG(*)
+        FROM (
+            SELECT source.ProductID
+            FROM ({$attachmentQuery}) source
+            WHERE source.ProductID IS NOT NULL
+            GROUP BY source.ProductID
+        ) counted
+    ")->fetchColumn();
+
+    $sourceSql = "
+        SELECT source.ProductID,
+               MAX(source.Code) AS Number,
+               MAX(source.Name) AS Name,
+               MAX(CASE WHEN DATALENGTH(source.FileContent) > 0 THEN 1 ELSE 0 END) AS HasImage
+        FROM ({$attachmentQuery}) source
+        WHERE source.ProductID IS NOT NULL
+        GROUP BY source.ProductID
+    ";
+
+    // The attachment-first source can only list products with attachment rows.
+    // "without image" is therefore not a valid filter for this source.
     if ($imageFilter === 'without') {
-        $sourceSql .= "
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM [SLS3].[ProductAttachment] pa
-                WHERE pa.ProductRef = p.ProductID
-                  AND DATALENGTH(pa.FileContent) > 0
-            )
+        $sourceSql = "
+            SELECT source.ProductID,
+                   MAX(source.Code) AS Number,
+                   MAX(source.Name) AS Name,
+                   CAST(0 AS INT) AS HasImage
+            FROM ({$attachmentQuery}) source
+            WHERE source.ProductID IS NOT NULL
+              AND (source.FileContent IS NULL OR DATALENGTH(source.FileContent) = 0)
+            GROUP BY source.ProductID
         ";
     } elseif ($imageFilter === 'with') {
-        $sourceSql .= "
-            WHERE EXISTS (
-                SELECT 1
-                FROM [SLS3].[ProductAttachment] pa
-                WHERE pa.ProductRef = p.ProductID
-                  AND DATALENGTH(pa.FileContent) > 0
-            )
+        $sourceSql = "
+            SELECT source.ProductID,
+                   MAX(source.Code) AS Number,
+                   MAX(source.Name) AS Name,
+                   CAST(1 AS INT) AS HasImage
+            FROM ({$attachmentQuery}) source
+            WHERE source.ProductID IS NOT NULL
+              AND DATALENGTH(source.FileContent) > 0
+            GROUP BY source.ProductID
         ";
     }
 
@@ -174,7 +189,6 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
         <section class="toolbar" aria-label="اطلاعات فهرست">
             <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> نتیجه</p>
             <p>صفحه <?= e(number_format($page)) ?> از <?= e(number_format($totalPages)) ?></p>
-            <p><a class="report-link" href="no-images.php">گزارش کالاهای بدون تصویر و خروجی Excel</a></p>
         </section>
         <div class="table-wrap">
             <table>
