@@ -17,14 +17,6 @@ if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
 $orderBy = $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', p.ProductID ASC';
 
-// The requested attachment-first query is the common source for image data.
-$attachmentQuery = "
-    SELECT gp.Code, gp.Name, pa.FileContent
-    FROM [SLS3].[ProductAttachment] pa
-    LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
-    LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
-";
-
 $products = [];
 $total = 0;
 $allTotal = 0;
