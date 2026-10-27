@@ -67,14 +67,14 @@ try {
                 SELECT 1
                 FROM ({$attachmentQuery}) imageData
                 WHERE imageData.ProductID = p.ProductID
-                  AND imageData.FileContent IS NOT NULL
+                  AND DATALENGTH(imageData.FileContent) > 0
             )
         ";
     } else {
         // Collapse multiple attachment rows into one product row. A product
         // is image-bearing if at least one attachment has non-empty content.
         $contentFilter = $imageFilter === 'with'
-            ? 'WHERE imageData.FileContent IS NOT NULL'
+            ? 'WHERE DATALENGTH(imageData.FileContent) > 0'
             : '';
         $sourceSql = "
             SELECT raw.ProductID,
