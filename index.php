@@ -11,11 +11,19 @@ const PAGE_SIZE = 25;
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
 
-$allowedSorts = ['number' => 'p.Number', 'name' => 'p.Name'];
+$allowedSorts = ['number' => 'COALESCE(gp.Code, p.Number)', 'name' => 'COALESCE(gp.Name, p.Name)'];
 $sort = (string)($_GET['sort'] ?? 'number');
 if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
 $orderBy = $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', p.ProductID ASC';
+
+// The requested attachment-first query is the common source for image data.
+$attachmentQuery = '
+    SELECT gp.Code, gp.Name, pa.FileContent
+    FROM [SLS3].[ProductAttachment] pa
+    LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
+    LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+';
 
 $products = [];
 $total = 0;
@@ -38,17 +46,17 @@ try {
     $where = [];
     $params = [];
     if ($search !== '') {
-        $where[] = '(CONVERT(NVARCHAR(255), p.Number) LIKE :searchNumber OR p.Name LIKE :searchName)';
+        $where[] = '(CONVERT(NVARCHAR(255), COALESCE(gp.Code, p.Number)) LIKE :searchNumber OR COALESCE(gp.Name, p.Name) LIKE :searchName)';
         $params[':searchNumber'] = '%' . $search . '%';
         $params[':searchName'] = '%' . $search . '%';
     }
     if ($imageFilter === 'with') {
-        $where[] = 'EXISTS (SELECT 1 FROM [SLS3].[ProductAttachment] pa WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL)';
+        $where[] = 'EXISTS (SELECT 1 FROM (' . $attachmentQuery . ') imageData WHERE imageData.Code = COALESCE(gp.Code, p.Number) AND imageData.FileContent IS NOT NULL)';
     } elseif ($imageFilter === 'without') {
-        $where[] = 'NOT EXISTS (SELECT 1 FROM [SLS3].[ProductAttachment] pa WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL)';
+        $where[] = 'NOT EXISTS (SELECT 1 FROM (' . $attachmentQuery . ') imageData WHERE imageData.Code = COALESCE(gp.Code, p.Number) AND imageData.FileContent IS NOT NULL)';
     }
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-    $countStatement = $pdo->prepare('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p' . $whereSql);
+    $countStatement = $pdo->prepare('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code' . $whereSql);
     foreach ($params as $key => $value) {
         $countStatement->bindValue($key, $value, PDO::PARAM_STR);
     }
@@ -59,14 +67,17 @@ try {
     $offset = ($page - 1) * PAGE_SIZE;
 
     $sql = "
-        SELECT p.ProductID, p.Number, p.Name,
+        SELECT p.ProductID,
+               COALESCE(gp.Code, p.Number) AS Number,
+               COALESCE(gp.Name, p.Name) AS Name,
                CASE WHEN img.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
         FROM [SLS3].[Product] p
+        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
         OUTER APPLY (
-            SELECT TOP (1) pa.FileContent
-            FROM [SLS3].[ProductAttachment] pa
-            WHERE pa.ProductRef = p.ProductID AND pa.FileContent IS NOT NULL
-            ORDER BY pa.ProductRef
+            SELECT TOP (1) imageData.FileContent
+            FROM ({$attachmentQuery}) imageData
+            WHERE imageData.Code = COALESCE(gp.Code, p.Number)
+              AND imageData.FileContent IS NOT NULL
         ) img
         {$whereSql}
         ORDER BY {$orderBy}
