@@ -17,7 +17,9 @@ try {
     $statement = $pdo->prepare(
         'SELECT TOP (1) pa.FileContent
          FROM [SLS3].[ProductAttachment] pa
-         WHERE pa.ProductRef = :productId AND pa.FileContent IS NOT NULL
+         LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
+         LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+         WHERE p.ProductID = :productId AND pa.FileContent IS NOT NULL
          ORDER BY pa.ProductRef'
     );
     $statement->bindValue(':productId', $id, PDO::PARAM_INT);
