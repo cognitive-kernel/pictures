@@ -32,8 +32,6 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
 
 try {
     $pdo = Database::connection();
-    $allTotal = (int)$pdo->query('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p')->fetchColumn();
-
     // Main gallery source: the user's attachment-first query.
     // ProductID is included only as an internal key for image.php.
     $attachmentQuery = "
@@ -43,9 +41,21 @@ try {
         LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
     ";
 
+    // The header count uses the same attachment-first data source and counts unique products.
+    $allTotal = (int)$pdo->query("
+        SELECT COUNT_BIG(*)
+        FROM (
+            SELECT imageData.ProductID
+            FROM ({$attachmentQuery}) imageData
+            WHERE imageData.ProductID IS NOT NULL
+            GROUP BY imageData.ProductID
+        ) countedProducts
+    ")->fetchColumn();
+
     if ($imageFilter === 'without') {
-        // Products without an image must come from Product, because they
-        // cannot exist in an attachment-first result set.
+        // A product may have no attachment row at all, so the no-image
+        // filter must start from Product and exclude any non-empty image
+        // found by the required attachment-first source.
         $sourceSql = "
             SELECT p.ProductID,
                    COALESCE(gp.Code, p.Number) AS Number,
@@ -61,19 +71,27 @@ try {
             )
         ";
     } else {
-        // "all" follows the attachment query exactly; "with" filters out
-        // attachment rows whose binary content is empty.
-        $attachmentContentFilter = $imageFilter === 'with'
+        // Collapse multiple attachment rows into one product row. A product
+        // is image-bearing if at least one attachment has non-empty content.
+        $contentFilter = $imageFilter === 'with'
             ? 'WHERE imageData.FileContent IS NOT NULL'
             : '';
         $sourceSql = "
-            SELECT imageData.ProductID,
-                   COALESCE(imageData.Code, p.Number) AS Number,
-                   COALESCE(imageData.Name, p.Name) AS Name,
-                   CASE WHEN imageData.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
-            FROM ({$attachmentQuery}) imageData
-            LEFT JOIN [SLS3].[Product] p ON p.ProductID = imageData.ProductID
-            {$attachmentContentFilter}
+            SELECT raw.ProductID,
+                   MAX(raw.Number) AS Number,
+                   MAX(raw.Name) AS Name,
+                   MAX(raw.HasImage) AS HasImage
+            FROM (
+                SELECT imageData.ProductID,
+                       COALESCE(imageData.Code, p.Number) AS Number,
+                       COALESCE(imageData.Name, p.Name) AS Name,
+                       CASE WHEN imageData.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
+                FROM ({$attachmentQuery}) imageData
+                LEFT JOIN [SLS3].[Product] p ON p.ProductID = imageData.ProductID
+                {$contentFilter}
+            ) raw
+            WHERE raw.ProductID IS NOT NULL
+            GROUP BY raw.ProductID
         ";
     }
 
