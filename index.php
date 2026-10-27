@@ -11,7 +11,7 @@ const PAGE_SIZE = 25;
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
 
-$allowedSorts = ['number' => 'COALESCE(gp.Code, p.Number)', 'name' => 'COALESCE(gp.Name, p.Name)'];
+$allowedSorts = ['number' => 'gallery.Number', 'name' => 'gallery.Name'];
 $sort = (string)($_GET['sort'] ?? 'number');
 if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
@@ -43,20 +43,58 @@ try {
     $pdo = Database::connection();
     $allTotal = (int)$pdo->query('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p')->fetchColumn();
 
+    // Main gallery source: the user's attachment-first query.
+    // ProductID is included only as an internal key for image.php.
+    $attachmentQuery = "
+        SELECT gp.Code, gp.Name, pa.FileContent, p.ProductID
+        FROM [SLS3].[ProductAttachment] pa
+        LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
+        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+    ";
+
+    if ($imageFilter === 'without') {
+        // Products without an image must come from Product, because they
+        // cannot exist in an attachment-first result set.
+        $sourceSql = "
+            SELECT p.ProductID,
+                   COALESCE(gp.Code, p.Number) AS Number,
+                   COALESCE(gp.Name, p.Name) AS Name,
+                   CAST(0 AS INT) AS HasImage
+            FROM [SLS3].[Product] p
+            LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM ({$attachmentQuery}) imageData
+                WHERE imageData.ProductID = p.ProductID
+                  AND imageData.FileContent IS NOT NULL
+            )
+        ";
+    } else {
+        // Only records returned by the attachment query are shown in the
+        // main gallery. Ignore empty attachment payloads.
+        $sourceSql = "
+            SELECT imageData.ProductID,
+                   COALESCE(imageData.Code, p.Number) AS Number,
+                   COALESCE(imageData.Name, p.Name) AS Name,
+                   CAST(1 AS INT) AS HasImage
+            FROM ({$attachmentQuery}) imageData
+            LEFT JOIN [SLS3].[Product] p ON p.ProductID = imageData.ProductID
+            WHERE imageData.FileContent IS NOT NULL
+        ";
+    }
+
     $where = [];
     $params = [];
     if ($search !== '') {
-        $where[] = '(CONVERT(NVARCHAR(255), COALESCE(gp.Code, p.Number)) LIKE :searchNumber OR COALESCE(gp.Name, p.Name) LIKE :searchName)';
+        $where[] = '(CONVERT(NVARCHAR(255), gallery.Number) LIKE :searchNumber OR gallery.Name LIKE :searchName)';
         $params[':searchNumber'] = '%' . $search . '%';
         $params[':searchName'] = '%' . $search . '%';
     }
-    if ($imageFilter === 'with') {
-        $where[] = 'EXISTS (SELECT 1 FROM (' . $attachmentQuery . ') imageData WHERE imageData.Code = COALESCE(gp.Code, p.Number) AND imageData.FileContent IS NOT NULL)';
-    } elseif ($imageFilter === 'without') {
-        $where[] = 'NOT EXISTS (SELECT 1 FROM (' . $attachmentQuery . ') imageData WHERE imageData.Code = COALESCE(gp.Code, p.Number) AND imageData.FileContent IS NOT NULL)';
-    }
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-    $countStatement = $pdo->prepare('SELECT COUNT_BIG(*) FROM [SLS3].[Product] p LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code' . $whereSql);
+
+    $countStatement = $pdo->prepare(
+        'SELECT COUNT_BIG(*) FROM (' . $sourceSql . ') gallery' . $whereSql
+    );
     foreach ($params as $key => $value) {
         $countStatement->bindValue($key, $value, PDO::PARAM_STR);
     }
@@ -66,23 +104,13 @@ try {
     $page = min($page, $totalPages);
     $offset = ($page - 1) * PAGE_SIZE;
 
-    $sql = "
-        SELECT p.ProductID,
-               COALESCE(gp.Code, p.Number) AS Number,
-               COALESCE(gp.Name, p.Name) AS Name,
-               CASE WHEN img.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
-        FROM [SLS3].[Product] p
-        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
-        OUTER APPLY (
-            SELECT TOP (1) imageData.FileContent
-            FROM ({$attachmentQuery}) imageData
-            WHERE imageData.Code = COALESCE(gp.Code, p.Number)
-              AND imageData.FileContent IS NOT NULL
-        ) img
-        {$whereSql}
-        ORDER BY {$orderBy}
+    $sql = '
+        SELECT gallery.ProductID, gallery.Number, gallery.Name, gallery.HasImage
+        FROM (' . $sourceSql . ') gallery'
+        . $whereSql . '
+        ORDER BY ' . $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', gallery.ProductID ASC
         OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
-    ";
+    ';
     $statement = $pdo->prepare($sql);
     foreach ($params as $key => $value) {
         $statement->bindValue($key, $value, PDO::PARAM_STR);
@@ -90,14 +118,13 @@ try {
     $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
     $statement->bindValue(':pageSize', PAGE_SIZE, PDO::PARAM_INT);
     $statement->execute();
-    $products = $statement->fetchAll();
+    $products = $statement->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $exception) {
     error_log('Pictures page failed: ' . $exception->getMessage());
     $errorMessage = $exception instanceof RuntimeException
         ? $exception->getMessage()
         : 'دریافت اطلاعات با خطا مواجه شد. گزارش خطا در لاگ سرور ثبت شده است.';
 }
-
 function sortLink(string $column, string $label, string $currentSort, string $currentDirection): string
 {
     $nextDirection = ($column === $currentSort && $currentDirection === 'asc') ? 'desc' : 'asc';
