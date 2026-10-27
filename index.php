@@ -61,16 +61,19 @@ try {
             )
         ";
     } else {
-        // Only records returned by the attachment query are shown in the
-        // main gallery. Ignore empty attachment payloads.
+        // "all" follows the attachment query exactly; "with" filters out
+        // attachment rows whose binary content is empty.
+        $attachmentContentFilter = $imageFilter === 'with'
+            ? 'WHERE imageData.FileContent IS NOT NULL'
+            : '';
         $sourceSql = "
             SELECT imageData.ProductID,
                    COALESCE(imageData.Code, p.Number) AS Number,
                    COALESCE(imageData.Name, p.Name) AS Name,
-                   CAST(1 AS INT) AS HasImage
+                   CASE WHEN imageData.FileContent IS NULL THEN 0 ELSE 1 END AS HasImage
             FROM ({$attachmentQuery}) imageData
             LEFT JOIN [SLS3].[Product] p ON p.ProductID = imageData.ProductID
-            WHERE imageData.FileContent IS NOT NULL
+            {$attachmentContentFilter}
         ";
     }
 
