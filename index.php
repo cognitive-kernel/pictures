@@ -32,60 +32,47 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
 
 try {
     $pdo = Database::connection();
-    // Canonical gallery source: attachments joined to their product and part.
-    // ProductRef is kept as an internal identifier for image.php.
-    $attachmentQuery = "
-        SELECT gp.Code, gp.Name, pa.FileContent, pa.ProductRef AS ProductID
-        FROM [SLS3].[ProductAttachment] pa
-        LEFT JOIN [SLS3].[Product] p ON pa.ProductRef = p.ProductID
-        LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
+    // Combined Part + Product + Attachment + hierarchical StorePosition source.
+    $galleryCte = "
+        ;WITH Tree AS (
+            SELECT n.StorePositionID, n.Code, n.Name, n.ParentRef,
+                   CAST(n.Code AS NVARCHAR(MAX)) AS CodePath,
+                   CAST(n.Name AS NVARCHAR(MAX)) AS NamePath,
+                   0 AS Lvl
+            FROM [LGS3].[StorePosition] n
+            WHERE n.ParentRef IS NULL
+
+            UNION ALL
+
+            SELECT child.StorePositionID, child.Code, child.Name, child.ParentRef,
+                   CAST(parent.CodePath + N' > ' + child.Code AS NVARCHAR(MAX)),
+                   CAST(parent.NamePath + N' > ' + child.Name AS NVARCHAR(MAX)),
+                   parent.Lvl + 1
+            FROM [LGS3].[StorePosition] child
+            INNER JOIN Tree parent ON parent.StorePositionID = child.ParentRef
+        ),
+        GallerySource AS (
+            SELECT gp.PartID, gp.Code AS Number, gp.Name,
+                   pa.ProductRef AS ProductID, pa.FileContent,
+                   tree.NamePath AS ProductPath,
+                   CASE WHEN DATALENGTH(pa.FileContent) > 0 THEN 1 ELSE 0 END AS HasImage
+            FROM [LGS3].[Part] gp
+            LEFT JOIN [SLS3].[Product] p ON p.Number = gp.Code
+            LEFT JOIN [SLS3].[ProductAttachment] pa ON pa.ProductRef = p.ProductID
+            LEFT JOIN [LGS3].[PartStore] ps ON ps.PartRef = gp.PartID
+            LEFT JOIN Tree tree ON tree.StorePositionID = ps.PositionRef
+        )
     ";
 
-    // Count unique products represented by the attachment-first query.
-    $allTotal = (int)$pdo->query("
-        SELECT COUNT_BIG(*)
-        FROM (
-            SELECT source.ProductID
-            FROM ({$attachmentQuery}) source
-            WHERE source.ProductID IS NOT NULL
-            GROUP BY source.ProductID
-        ) counted
-    ")->fetchColumn();
+    $allTotal = (int)$pdo->query(
+        $galleryCte . " SELECT COUNT_BIG(*) FROM GallerySource OPTION (MAXRECURSION 0)"
+    )->fetchColumn();
 
-    $sourceSql = "
-        SELECT source.ProductID,
-               MAX(source.Code) AS Number,
-               MAX(source.Name) AS Name,
-               MAX(CASE WHEN DATALENGTH(source.FileContent) > 0 THEN 1 ELSE 0 END) AS HasImage
-        FROM ({$attachmentQuery}) source
-        WHERE source.ProductID IS NOT NULL
-        GROUP BY source.ProductID
-    ";
-
-    // The attachment-first source can only list products with attachment rows.
-    // "without image" is therefore not a valid filter for this source.
-    if ($imageFilter === 'without') {
-        $sourceSql = "
-            SELECT source.ProductID,
-                   MAX(source.Code) AS Number,
-                   MAX(source.Name) AS Name,
-                   CAST(0 AS INT) AS HasImage
-            FROM ({$attachmentQuery}) source
-            WHERE source.ProductID IS NOT NULL
-              AND (source.FileContent IS NULL OR DATALENGTH(source.FileContent) = 0)
-            GROUP BY source.ProductID
-        ";
-    } elseif ($imageFilter === 'with') {
-        $sourceSql = "
-            SELECT source.ProductID,
-                   MAX(source.Code) AS Number,
-                   MAX(source.Name) AS Name,
-                   CAST(1 AS INT) AS HasImage
-            FROM ({$attachmentQuery}) source
-            WHERE source.ProductID IS NOT NULL
-              AND DATALENGTH(source.FileContent) > 0
-            GROUP BY source.ProductID
-        ";
+    $sourceSql = "SELECT PartID, ProductID, Number, Name, ProductPath, HasImage FROM GallerySource";
+    if ($imageFilter === 'with') {
+        $sourceSql .= " WHERE HasImage = 1";
+    } elseif ($imageFilter === 'without') {
+        $sourceSql .= " WHERE HasImage = 0";
     }
 
     $where = [];
@@ -98,7 +85,7 @@ try {
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
     $countStatement = $pdo->prepare(
-        'SELECT COUNT_BIG(*) FROM (' . $sourceSql . ') gallery' . $whereSql
+        $galleryCte . ' SELECT COUNT_BIG(*) FROM (' . $sourceSql . ') gallery' . $whereSql . ' OPTION (MAXRECURSION 0)'
     );
     foreach ($params as $key => $value) {
         $countStatement->bindValue($key, $value, PDO::PARAM_STR);
@@ -110,11 +97,13 @@ try {
     $offset = ($page - 1) * PAGE_SIZE;
 
     $sql = '
-        SELECT gallery.ProductID, gallery.Number, gallery.Name, gallery.HasImage
+        SELECT gallery.ProductID, gallery.Number, gallery.Name, gallery.ProductPath, gallery.HasImage
+        ' . $galleryCte . '
         FROM (' . $sourceSql . ') gallery'
         . $whereSql . '
         ORDER BY ' . $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', gallery.ProductID ASC
         OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
+        OPTION (MAXRECURSION 0)
     ';
     $statement = $pdo->prepare($sql);
     foreach ($params as $key => $value) {
@@ -196,9 +185,10 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <th class="image-col">تصویر</th>
                     <th><?= sortLink('number', 'شماره کالا', $sort, $direction) ?></th>
                     <th><?= sortLink('name', 'نام کالا', $sort, $direction) ?></th>
+                    <th>مسیر کالا</th>
                 </tr></thead>
                 <tbody>
-                <?php if (!$products): ?><tr><td colspan="3" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
+                <?php if (!$products): ?><tr><td colspan="4" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($products as $product): ?>
                     <tr>
                         <td class="image-col">
@@ -214,6 +204,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         </td>
                         <td class="product-number"><?= e($product['Number'] ?? '—') ?></td>
                         <td><?= e($product['Name'] ?? '—') ?></td>
+                        <td><?= e($product['ProductPath'] ?? '—') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
