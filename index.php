@@ -96,9 +96,8 @@ try {
     $page = min($page, $totalPages);
     $offset = ($page - 1) * PAGE_SIZE;
 
-    $sql = '
+    $sql = $galleryCte . '
         SELECT gallery.ProductID, gallery.Number, gallery.Name, gallery.ProductPath, gallery.HasImage
-        ' . $galleryCte . '
         FROM (' . $sourceSql . ') gallery'
         . $whereSql . '
         ORDER BY ' . $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', gallery.ProductID ASC
