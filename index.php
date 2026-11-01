@@ -52,12 +52,12 @@ try {
             INNER JOIN Tree parent ON parent.StorePositionID = child.ParentRef
         ),
         GallerySource AS (
-            SELECT gp.PartID, gp.Code AS Number, gp.Name,
-                   pa.ProductRef AS ProductID, pa.FileContent,
+            SELECT gp.PartID, p.ProductID, gp.Code AS Number, gp.Name,
+                   pa.FileContent,
                    tree.NamePath AS ProductPath,
                    CASE WHEN DATALENGTH(pa.FileContent) > 0 THEN 1 ELSE 0 END AS HasImage
-            FROM [LGS3].[Part] gp
-            LEFT JOIN [SLS3].[Product] p ON p.Number = gp.Code
+            FROM [SLS3].[Product] p
+            LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
             LEFT JOIN [SLS3].[ProductAttachment] pa ON pa.ProductRef = p.ProductID
             LEFT JOIN [LGS3].[PartStore] ps ON ps.PartRef = gp.PartID
             LEFT JOIN Tree tree ON tree.StorePositionID = ps.PositionRef
