@@ -11,7 +11,7 @@ const PAGE_SIZE = 25;
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
 
-$allowedSorts = ['number' => 'filtered.Number', 'name' => 'filtered.Name'];
+$allowedSorts = ['number' => 'Number', 'name' => 'Name'];
 $sort = (string)($_GET['sort'] ?? 'number');
 if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
@@ -125,7 +125,7 @@ try {
             WHERE ps.PartRef = page.PartID
             ORDER BY ps.PositionRef
         ) location
-        ORDER BY {$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
+        ORDER BY page.{$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
         OPTION (MAXRECURSION 0)
     ";
 
@@ -175,7 +175,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <h1>گالری تصاویر کالاها</h1>
             <p class="subtitle">مشاهده کالاها و تصاویر پیوست‌شده در سیستم راهکاران</p>
         </div>
-        <div class="total-box"><span>تعداد کل کالاها</span><strong><?= e(number_format($allTotal)) ?></strong></div>
+        <div class="total-box"><span>تعداد نتایج</span><strong><?= e(number_format($total)) ?></strong></div>
     </div>
 </header>
 
