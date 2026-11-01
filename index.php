@@ -30,7 +30,9 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
 }
 
 try {
+    $requestStart = microtime(true);
     $pdo = Database::connection();
+    $dbConnectTime = microtime(true);
 
     // Filter and paginate products first; fetch hierarchical paths only for the current page.
     $where = [];
@@ -134,6 +136,11 @@ try {
     $statement->bindValue(':pageSize', PAGE_SIZE, PDO::PARAM_INT);
     $statement->execute();
     $products = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+    $queryEndTime = microtime(true);
+    header('X-Debug-DB-Connect: ' . round(($dbConnectTime - $requestStart) * 1000) . ' ms');
+    header('X-Debug-SQL: ' . round(($queryEndTime - $dbConnectTime) * 1000) . ' ms');
+    header('X-Debug-Total: ' . round(($queryEndTime - $requestStart) * 1000) . ' ms');
 
     if ($products) {
         $total = (int)$products[0]['TotalRows'];
