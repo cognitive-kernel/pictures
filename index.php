@@ -34,6 +34,27 @@ try {
     $pdo = Database::connection();
     $dbConnectTime = microtime(true);
 
+    // Materialize the recursive location tree once to avoid repeated expansion in OUTER APPLY.
+    $pdo->exec('DROP TABLE IF EXISTS #PicturesTree');
+    $pdo->exec("
+        ;WITH Tree AS (
+            SELECT n.StorePositionID, n.ParentRef,
+                   CAST(n.Name AS NVARCHAR(MAX)) AS NamePath
+            FROM [LGS3].[StorePosition] n
+            WHERE n.ParentRef IS NULL
+            UNION ALL
+            SELECT child.StorePositionID, child.ParentRef,
+                   CAST(parent.NamePath + N' > ' + child.Name AS NVARCHAR(MAX))
+            FROM [LGS3].[StorePosition] child
+            INNER JOIN Tree parent ON parent.StorePositionID = child.ParentRef
+        )
+        SELECT StorePositionID, ParentRef, NamePath
+        INTO #PicturesTree
+        FROM Tree
+        OPTION (MAXRECURSION 0)
+    ");
+    $pdo->exec('CREATE UNIQUE CLUSTERED INDEX IX_PicturesTree_Position ON #PicturesTree (StorePositionID)');
+
     // Filter and paginate products first; fetch hierarchical paths only for the current page.
     $where = [];
     $params = [];
@@ -85,23 +106,6 @@ try {
             FROM FilteredProducts
             ORDER BY {$allowedSorts[$sort]} " . strtoupper($direction) . ", ProductID ASC
             OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
-        ),
-        Tree AS (
-            SELECT
-                n.StorePositionID,
-                n.ParentRef,
-                CAST(n.Name AS NVARCHAR(MAX)) AS NamePath
-            FROM [LGS3].[StorePosition] n
-            WHERE n.ParentRef IS NULL
-
-            UNION ALL
-
-            SELECT
-                child.StorePositionID,
-                child.ParentRef,
-                CAST(parent.NamePath + N' > ' + child.Name AS NVARCHAR(MAX))
-            FROM [LGS3].[StorePosition] child
-            INNER JOIN Tree parent ON parent.StorePositionID = child.ParentRef
         )
         SELECT
             page.ProductID,
@@ -120,12 +124,11 @@ try {
         OUTER APPLY (
             SELECT TOP (1) tree.NamePath AS ProductPath
             FROM [LGS3].[PartStore] ps
-            INNER JOIN Tree tree ON tree.StorePositionID = ps.PositionRef
+            INNER JOIN #PicturesTree tree ON tree.StorePositionID = ps.PositionRef
             WHERE ps.PartRef = page.PartID
             ORDER BY ps.PositionRef
         ) location
         ORDER BY page.{$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
-        OPTION (MAXRECURSION 0)
     ";
 
     $statement = $pdo->prepare($sql);
