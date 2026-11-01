@@ -56,7 +56,7 @@ try {
     $pdo->exec('CREATE UNIQUE CLUSTERED INDEX IX_PicturesTree_Position ON #PicturesTree (StorePositionID)');
 
     // Filter and paginate products first; fetch hierarchical paths only for the current page.
-    $where = [];
+    $where = ['p.state = 1'];
     $params = [];
 
     if ($search !== '') {
