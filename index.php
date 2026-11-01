@@ -18,7 +18,6 @@ $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : '
 
 $products = [];
 $total = 0;
-$allTotal = 0;
 $errorMessage = null;
 $totalPages = 1;
 $search = trim((string)($_GET['q'] ?? ''));
@@ -69,14 +68,7 @@ try {
                 gp.PartID,
                 p.ProductID,
                 gp.Code AS Number,
-                gp.Name,
-                CASE WHEN EXISTS (
-                    SELECT 1
-                    FROM [SLS3].[ProductAttachment] pa
-                    WHERE pa.ProductRef = p.ProductID
-                      AND pa.FileContent IS NOT NULL
-                      AND DATALENGTH(pa.FileContent) > 0
-                ) THEN 1 ELSE 0 END AS HasImage
+                gp.Name
             FROM [SLS3].[Product] p
             LEFT JOIN [LGS3].[Part] gp ON gp.Code = p.Number
             {$whereSql}
@@ -87,7 +79,6 @@ try {
                 ProductID,
                 Number,
                 Name,
-                HasImage,
                 COUNT_BIG(*) OVER() AS TotalRows
             FROM FilteredProducts
             ORDER BY {$allowedSorts[$sort]} " . strtoupper($direction) . ", ProductID ASC
@@ -114,7 +105,13 @@ try {
             page.ProductID,
             page.Number,
             page.Name,
-            page.HasImage,
+            CASE WHEN EXISTS (
+                SELECT 1
+                FROM [SLS3].[ProductAttachment] pa
+                WHERE pa.ProductRef = page.ProductID
+                  AND pa.FileContent IS NOT NULL
+                  AND DATALENGTH(pa.FileContent) > 0
+            ) THEN 1 ELSE 0 END AS HasImage,
             page.TotalRows,
             location.ProductPath
         FROM PagedProducts page
@@ -140,7 +137,6 @@ try {
 
     if ($products) {
         $total = (int)$products[0]['TotalRows'];
-        $allTotal = $total;
         $totalPages = max(1, (int)ceil($total / PAGE_SIZE));
     }
 } catch (Throwable $exception) {
