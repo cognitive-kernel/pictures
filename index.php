@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use Pictures\\Database;
+use Pictures\Database;
 
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
