@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-use Pictures\Database;
+use Pictures\\Database;
 
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
@@ -11,7 +11,7 @@ const PAGE_SIZE = 25;
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
 
-$allowedSorts = ['number' => 'gallery.Number', 'name' => 'gallery.Name'];
+$allowedSorts = ['number' => 'filtered.Number', 'name' => 'filtered.Name'];
 $sort = (string)($_GET['sort'] ?? 'number');
 if (!array_key_exists($sort, $allowedSorts)) $sort = 'number';
 $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
@@ -32,86 +32,117 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
 
 try {
     $pdo = Database::connection();
-    // Combined Part + Product + Attachment + hierarchical StorePosition source.
-    $galleryCte = "
-        ;WITH Tree AS (
-            SELECT n.StorePositionID, n.Code, n.Name, n.ParentRef,
-                   CAST(n.Code AS NVARCHAR(MAX)) AS CodePath,
-                   CAST(n.Name AS NVARCHAR(MAX)) AS NamePath,
-                   0 AS Lvl
+
+    // Filter and paginate products first; fetch hierarchical paths only for the current page.
+    $where = [];
+    $params = [];
+
+    if ($search !== '') {
+        $where[] = '(CONVERT(NVARCHAR(255), gp.Code) LIKE :searchNumber OR gp.Name LIKE :searchName)';
+        $params[':searchNumber'] = '%' . $search . '%';
+        $params[':searchName'] = '%' . $search . '%';
+    }
+
+    if ($imageFilter === 'with') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM [SLS3].[ProductAttachment] pa
+            WHERE pa.ProductRef = p.ProductID
+              AND pa.FileContent IS NOT NULL
+              AND DATALENGTH(pa.FileContent) > 0
+        )';
+    } elseif ($imageFilter === 'without') {
+        $where[] = 'NOT EXISTS (
+            SELECT 1
+            FROM [SLS3].[ProductAttachment] pa
+            WHERE pa.ProductRef = p.ProductID
+              AND pa.FileContent IS NOT NULL
+              AND DATALENGTH(pa.FileContent) > 0
+        )';
+    }
+
+    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+    $sql = "
+        ;WITH FilteredProducts AS (
+            SELECT
+                gp.PartID,
+                p.ProductID,
+                gp.Code AS Number,
+                gp.Name,
+                CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM [SLS3].[ProductAttachment] pa
+                    WHERE pa.ProductRef = p.ProductID
+                      AND pa.FileContent IS NOT NULL
+                      AND DATALENGTH(pa.FileContent) > 0
+                ) THEN 1 ELSE 0 END AS HasImage
+            FROM [SLS3].[Product] p
+            LEFT JOIN [LGS3].[Part] gp ON gp.Code = p.Number
+            {$whereSql}
+        ),
+        PagedProducts AS (
+            SELECT
+                PartID,
+                ProductID,
+                Number,
+                Name,
+                HasImage,
+                COUNT_BIG(*) OVER() AS TotalRows
+            FROM FilteredProducts
+            ORDER BY {$allowedSorts[$sort]} " . strtoupper($direction) . ", ProductID ASC
+            OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
+        ),
+        Tree AS (
+            SELECT
+                n.StorePositionID,
+                n.ParentRef,
+                CAST(n.Name AS NVARCHAR(MAX)) AS NamePath
             FROM [LGS3].[StorePosition] n
             WHERE n.ParentRef IS NULL
 
             UNION ALL
 
-            SELECT child.StorePositionID, child.Code, child.Name, child.ParentRef,
-                   CAST(parent.CodePath + N' > ' + child.Code AS NVARCHAR(MAX)),
-                   CAST(parent.NamePath + N' > ' + child.Name AS NVARCHAR(MAX)),
-                   parent.Lvl + 1
+            SELECT
+                child.StorePositionID,
+                child.ParentRef,
+                CAST(parent.NamePath + N' > ' + child.Name AS NVARCHAR(MAX))
             FROM [LGS3].[StorePosition] child
             INNER JOIN Tree parent ON parent.StorePositionID = child.ParentRef
-        ),
-        GallerySource AS (
-            SELECT gp.PartID, p.ProductID, gp.Code AS Number, gp.Name,
-                   pa.FileContent,
-                   tree.NamePath AS ProductPath,
-                   CASE WHEN DATALENGTH(pa.FileContent) > 0 THEN 1 ELSE 0 END AS HasImage
-            FROM [SLS3].[Product] p
-            LEFT JOIN [LGS3].[Part] gp ON p.Number = gp.Code
-            LEFT JOIN [SLS3].[ProductAttachment] pa ON pa.ProductRef = p.ProductID
-            LEFT JOIN [LGS3].[PartStore] ps ON ps.PartRef = gp.PartID
-            LEFT JOIN Tree tree ON tree.StorePositionID = ps.PositionRef
         )
+        SELECT
+            page.ProductID,
+            page.Number,
+            page.Name,
+            page.HasImage,
+            page.TotalRows,
+            location.ProductPath
+        FROM PagedProducts page
+        OUTER APPLY (
+            SELECT TOP (1) tree.NamePath AS ProductPath
+            FROM [LGS3].[PartStore] ps
+            INNER JOIN Tree tree ON tree.StorePositionID = ps.PositionRef
+            WHERE ps.PartRef = page.PartID
+            ORDER BY ps.PositionRef
+        ) location
+        ORDER BY {$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
+        OPTION (MAXRECURSION 0)
     ";
 
-    $allTotal = (int)$pdo->query(
-        $galleryCte . " SELECT COUNT_BIG(*) FROM GallerySource OPTION (MAXRECURSION 0)"
-    )->fetchColumn();
-
-    $sourceSql = "SELECT PartID, ProductID, Number, Name, ProductPath, HasImage FROM GallerySource";
-    if ($imageFilter === 'with') {
-        $sourceSql .= " WHERE HasImage = 1";
-    } elseif ($imageFilter === 'without') {
-        $sourceSql .= " WHERE HasImage = 0";
-    }
-
-    $where = [];
-    $params = [];
-    if ($search !== '') {
-        $where[] = '(CONVERT(NVARCHAR(255), gallery.Number) LIKE :searchNumber OR gallery.Name LIKE :searchName)';
-        $params[':searchNumber'] = '%' . $search . '%';
-        $params[':searchName'] = '%' . $search . '%';
-    }
-    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-
-    $countStatement = $pdo->prepare(
-        $galleryCte . ' SELECT COUNT_BIG(*) FROM (' . $sourceSql . ') gallery' . $whereSql . ' OPTION (MAXRECURSION 0)'
-    );
-    foreach ($params as $key => $value) {
-        $countStatement->bindValue($key, $value, PDO::PARAM_STR);
-    }
-    $countStatement->execute();
-    $total = (int)$countStatement->fetchColumn();
-    $totalPages = max(1, (int)ceil($total / PAGE_SIZE));
-    $page = min($page, $totalPages);
-    $offset = ($page - 1) * PAGE_SIZE;
-
-    $sql = $galleryCte . '
-        SELECT gallery.ProductID, gallery.Number, gallery.Name, gallery.ProductPath, gallery.HasImage
-        FROM (' . $sourceSql . ') gallery'
-        . $whereSql . '
-        ORDER BY ' . $allowedSorts[$sort] . ' ' . strtoupper($direction) . ', gallery.ProductID ASC
-        OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY
-        OPTION (MAXRECURSION 0)
-    ';
     $statement = $pdo->prepare($sql);
     foreach ($params as $key => $value) {
         $statement->bindValue($key, $value, PDO::PARAM_STR);
     }
-    $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $statement->bindValue(':offset', ($page - 1) * PAGE_SIZE, PDO::PARAM_INT);
     $statement->bindValue(':pageSize', PAGE_SIZE, PDO::PARAM_INT);
     $statement->execute();
     $products = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($products) {
+        $total = (int)$products[0]['TotalRows'];
+        $allTotal = $total;
+        $totalPages = max(1, (int)ceil($total / PAGE_SIZE));
+    }
 } catch (Throwable $exception) {
     error_log('Pictures page failed: ' . $exception->getMessage());
     $errorMessage = $exception instanceof RuntimeException
