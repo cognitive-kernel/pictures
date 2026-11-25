@@ -1,4 +1,5 @@
 /config/database.local.php
+/config/pics.local.php
 .env
 .env.*
 !.env.example
