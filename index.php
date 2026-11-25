@@ -143,6 +143,12 @@ try {
                 FROM [LGS3].[PartStore] ps
                 INNER JOIN #PicturesTree tree ON tree.StorePositionID = ps.PositionRef
                 WHERE ps.PartRef = page.PartID
+                  AND tree.ParentRef IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM [LGS3].[StorePosition] child
+                      WHERE child.ParentRef = tree.StorePositionID
+                  )
             ) paths
         ) location
         ORDER BY page.{$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
