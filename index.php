@@ -55,7 +55,7 @@ try {
     ");
     $pdo->exec('CREATE UNIQUE CLUSTERED INDEX IX_PicturesTree_Position ON #PicturesTree (StorePositionID)');
 
-    // Filter and paginate products first; fetch hierarchical paths only for the current page.
+    // Filter and paginate products first; fetch all hierarchical paths only for the current page.
     $where = ['p.state = 1'];
     $params = [];
 
@@ -122,11 +122,15 @@ try {
             location.ProductPath
         FROM PagedProducts page
         OUTER APPLY (
-            SELECT TOP (1) tree.NamePath AS ProductPath
-            FROM [LGS3].[PartStore] ps
-            INNER JOIN #PicturesTree tree ON tree.StorePositionID = ps.PositionRef
-            WHERE ps.PartRef = page.PartID
-            ORDER BY ps.PositionRef
+            SELECT
+                STRING_AGG(paths.NamePath, N' | ')
+                    WITHIN GROUP (ORDER BY paths.NamePath) AS ProductPath
+            FROM (
+                SELECT DISTINCT tree.NamePath
+                FROM [LGS3].[PartStore] ps
+                INNER JOIN #PicturesTree tree ON tree.StorePositionID = ps.PositionRef
+                WHERE ps.PartRef = page.PartID
+            ) paths
         ) location
         ORDER BY page.{$allowedSorts[$sort]} " . strtoupper($direction) . ", page.ProductID ASC
     ";
