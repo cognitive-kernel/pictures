@@ -92,7 +92,7 @@ function reportUrl(array $changes = []): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>گزارش تأیید کالاها</title>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=20261125-mobile-cards-2">
 </head>
 <body>
 <header class="topbar">
