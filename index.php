@@ -119,8 +119,21 @@ try {
                   AND DATALENGTH(pa.FileContent) > 0
             ) THEN 1 ELSE 0 END AS HasImage,
             page.TotalRows,
+            warehouse.WarehouseLocation,
             location.ProductPath
         FROM PagedProducts page
+        OUTER APPLY (
+            SELECT
+                STRING_AGG(locations.WarehouseLocation, N' | ')
+                    WITHIN GROUP (ORDER BY locations.WarehouseLocation) AS WarehouseLocation
+            FROM (
+                SELECT DISTINCT
+                    LEFT(tree.NamePath, CHARINDEX(N' > ', tree.NamePath + N' > ') - 1) AS WarehouseLocation
+                FROM [LGS3].[PartStore] ps
+                INNER JOIN #PicturesTree tree ON tree.StorePositionID = ps.PositionRef
+                WHERE ps.PartRef = page.PartID
+            ) locations
+        ) warehouse
         OUTER APPLY (
             SELECT
                 STRING_AGG(paths.NamePath, N' | ')
@@ -225,10 +238,11 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <th class="image-col">تصویر</th>
                     <th><?= sortLink('number', 'شماره کالا', $sort, $direction) ?></th>
                     <th><?= sortLink('name', 'نام کالا', $sort, $direction) ?></th>
-                    <th>مسیر کالا</th>
+                    <th>محل انبار</th>
+                    <th>مسیر کامل</th>
                 </tr></thead>
                 <tbody>
-                <?php if (!$products): ?><tr><td colspan="4" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
+                <?php if (!$products): ?><tr><td colspan="5" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($products as $product): ?>
                     <tr>
                         <td class="image-col">
@@ -244,6 +258,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         </td>
                         <td class="product-number"><?= e($product['Number'] ?? '—') ?></td>
                         <td><?= e($product['Name'] ?? '—') ?></td>
+                        <td><?= e($product['WarehouseLocation'] ?? '—') ?></td>
                         <td><?= e($product['ProductPath'] ?? '—') ?></td>
                     </tr>
                 <?php endforeach; ?>
