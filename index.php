@@ -232,6 +232,10 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <h1>گالری تصاویر کالاها</h1>
             <p class="subtitle">مشاهده کالاها و تصاویر پیوست‌شده در سیستم راهکاران</p>
         </div>
+        <nav class="main-nav" aria-label="منوی اصلی">
+            <a class="active" href="index.php">گالری کالاها</a>
+            <a href="report.php">گزارش تأیید</a>
+        </nav>
         <div class="total-box"><span>تعداد نتایج</span><strong><?= e(number_format($total)) ?></strong></div>
     </div>
 </header>
