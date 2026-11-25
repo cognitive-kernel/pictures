@@ -16,11 +16,11 @@ if (mb_strlen($search, 'UTF-8') > 100) $search = mb_substr($search, 0, 100, 'UTF
 try {
     $source = Database::connection();
     $sql = "
-        SELECT DISTINCT CONVERT(NVARCHAR(100), gp.Code) AS ProductCode, gp.Name AS ProductName
+        SELECT DISTINCT CONVERT(NVARCHAR(100), COALESCE(gp.Code, p.Number)) AS ProductCode, gp.Name AS ProductName
         FROM [SLS3].[Product] p
-        INNER JOIN [LGS3].[Part] gp ON gp.Code = p.Number
+        LEFT JOIN [LGS3].[Part] gp ON gp.Code = p.Number
         WHERE p.state = 1
-          AND (:searchEmpty = 1 OR CONVERT(NVARCHAR(100), gp.Code) LIKE :searchCodeLike OR gp.Name LIKE :searchNameLike)
+          AND (:searchEmpty = 1 OR CONVERT(NVARCHAR(100), COALESCE(gp.Code, p.Number)) LIKE :searchCodeLike OR gp.Name LIKE :searchNameLike)
         ORDER BY ProductCode
     ";
     $query = $source->prepare($sql);
