@@ -343,6 +343,6 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
     <div class="lightbox-stage"><img id="lightbox-image" alt=""></div>
     <p class="lightbox-hint">برای بستن، بیرون تصویر کلیک کنید یا کلید Escape را بزنید.</p>
 </div>
-<footer class="footer"><div class="container">گالری تصاویر کالاها · اتصال فقط خواندنی</div></footer>
+<footer class="footer"><div class="container">گالری تصاویر کالاها · اطلاعات راهکاران و ثبت تأیید در Pics</div></footer>
 </body>
 </html>
