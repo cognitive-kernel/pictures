@@ -105,3 +105,36 @@ tbody tr:hover { background: #f8fbff; }
 @media (max-width: 360px) {
     tbody tr td { grid-template-columns: minmax(78px, 31%) minmax(0, 1fr); gap: 5px; font-size: 12px; }
 }
+
+
+.main-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.main-nav a { display: inline-block; padding: 8px 13px; border: 1px solid #ffffff55; border-radius: 9px; color: #eaf1ff; text-decoration: none; font-size: 13px; font-weight: 700; }
+.main-nav a:hover, .main-nav a.active { color: #17356d; background: #fff; border-color: #fff; }
+.report-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.report-summary > div { display: flex; flex-direction: column; gap: 4px; padding: 15px 18px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.report-summary span { color: var(--muted); font-size: 13px; }
+.report-summary strong { color: #1e293b; font-size: 24px; font-variant-numeric: tabular-nums; }
+.export-link { background: #effaf3; border-color: #b7e4c7; color: #17663a; }
+.export-link:hover { background: #e2f6e9; border-color: #86d2a2; }
+.status-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-approved { color: #17663a; background: #e2f6e9; }
+.status-pill.is-pending { color: #92400e; background: #fff4df; }
+.report-table { min-width: 0; }
+@media (max-width: 700px) {
+    .main-nav { width: 100%; }
+    .report-summary { gap: 7px; }
+    .report-summary > div { padding: 11px 9px; }
+    .report-summary span { font-size: 11px; }
+    .report-summary strong { font-size: 20px; }
+    .report-table { display: block; width: 100%; }
+    .report-table thead { display: none; }
+    .report-table tbody { display: grid; gap: 10px; }
+    .report-table tbody tr { display: grid; gap: 0; padding: 7px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    .report-table tbody tr td { display: grid; grid-template-columns: minmax(105px, 35%) minmax(0, 1fr); gap: 8px; min-width: 0; padding: 9px 2px; border-bottom: 1px solid #edf1f6; overflow-wrap: anywhere; }
+    .report-table tbody tr td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700; }
+    .report-table tbody tr td.empty { display: block; text-align: center; }
+    .report-table tbody tr td.empty::before { content: none; }
+}
+@media (max-width: 360px) {
+    .report-summary { grid-template-columns: 1fr; }
+}
