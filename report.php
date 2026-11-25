@@ -20,12 +20,12 @@ try {
         FROM [SLS3].[Product] p
         INNER JOIN [LGS3].[Part] gp ON gp.Code = p.Number
         WHERE p.state = 1
-          AND (:searchCode = '' OR CONVERT(NVARCHAR(100), gp.Code) LIKE :searchCodeLike OR gp.Name LIKE :searchNameLike)
-        ORDER BY CONVERT(NVARCHAR(100), gp.Code)
+          AND (:searchEmpty = 1 OR CONVERT(NVARCHAR(100), gp.Code) LIKE :searchCodeLike OR gp.Name LIKE :searchNameLike)
+        ORDER BY ProductCode
     ";
     $query = $source->prepare($sql);
     $like = '%' . $search . '%';
-    $query->execute([':searchCode' => $search, ':searchCodeLike' => $like, ':searchNameLike' => $like]);
+    $query->execute([':searchEmpty' => $search === '' ? 1 : 0, ':searchCodeLike' => $like, ':searchNameLike' => $like]);
     $products = $query->fetchAll(PDO::FETCH_ASSOC);
 
     $approvalPdo = ApprovalDatabase::connection();
