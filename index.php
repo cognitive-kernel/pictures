@@ -282,7 +282,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                 <?php if (!$products): ?><tr><td colspan="7" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($products as $product): ?>
                     <tr>
-                        <td class="image-col">
+                        <td class="image-col" data-label="تصویر">
                             <?php if ((int)$product['HasImage'] === 1): ?>
                                 <button class="thumbnail-button js-open-image" type="button"
                                         data-image="image.php?id=<?= rawurlencode((string)$product['ProductID']) ?>"
@@ -293,10 +293,10 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                                 </button>
                             <?php else: ?><span class="no-image">بدون تصویر</span><?php endif; ?>
                         </td>
-                        <td class="product-number"><?= e($product['Number'] ?? '—') ?></td>
-                        <td><?= e($product['Name'] ?? '—') ?></td>
-                        <td><?= e($product['WarehouseLocation'] ?? '—') ?></td>
-                        <td><?= e($product['ProductPath'] ?? '—') ?></td>
+                        <td class="product-number" data-label="شماره کالا"><?= e($product['Number'] ?? '—') ?></td>
+                        <td data-label="نام کالا"><?= e($product['Name'] ?? '—') ?></td>
+                        <td data-label="محل انبار"><?= e($product['WarehouseLocation'] ?? '—') ?></td>
+                        <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
                         <td data-label="مورد تأیید">
                             <select class="approval-select" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $product['IsApproved'] === null ? '' : (string)$product['IsApproved'] ?>" <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
                                 <option value="0" <?= $product['IsApproved'] !== 1 ? 'selected' : '' ?>>تأیید نشده</option>
