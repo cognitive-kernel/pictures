@@ -306,18 +306,16 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
                         <td data-label="مورد تأیید">
                             <?php $isApproved = (int)($product['IsApproved'] ?? 0) === 1; ?>
-                            <div class="approval-dropdown" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $isApproved ? '1' : '0' ?>">
+                            <div class="approval-control" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $isApproved ? '1' : '0' ?>">
                                 <button type="button"
-                                        class="approval-trigger <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
-                                        aria-haspopup="true" aria-expanded="false"
+                                        class="approval-switch <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
+                                        role="switch"
+                                        aria-checked="<?= $isApproved ? 'true' : 'false' ?>"
+                                        aria-label="وضعیت تأیید کالا"
                                         <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
-                                    <span class="approval-trigger-label"><?= $isApproved ? 'تأیید شده' : 'تأیید نشده' ?></span>
-                                    <span class="approval-trigger-arrow" aria-hidden="true">▾</span>
+                                    <span class="approval-switch-knob"></span>
                                 </button>
-                                <div class="approval-menu" role="menu" hidden>
-                                    <button type="button" role="menuitem" data-approval-value="1" class="approval-option is-approved">تأیید شده</button>
-                                    <button type="button" role="menuitem" data-approval-value="0" class="approval-option is-pending">تأیید نشده</button>
-                                </div>
+                                <span class="approval-switch-label"><?= $isApproved ? 'تأیید شده' : 'تأیید نشده' ?></span>
                             </div>
                         </td>
                         <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e($product['ApprovalModifiedAt'] ?? 'ثبت نشده') ?></td>
