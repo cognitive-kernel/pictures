@@ -33,6 +33,10 @@ $imageFilter = (string)($_GET['image'] ?? 'all');
 if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
     $imageFilter = 'all';
 }
+$approvalFilter = (string)($_GET['approval'] ?? 'all');
+if (!in_array($approvalFilter, ['all', 'approved', 'rejected'], true)) {
+    $approvalFilter = 'all';
+}
 
 try {
     $requestStart = microtime(true);
@@ -60,6 +64,45 @@ try {
     ");
     $pdo->exec('CREATE UNIQUE CLUSTERED INDEX IX_PicturesTree_Position ON #PicturesTree (StorePositionID)');
 
+    // Load approval states into a local temp table so filtering happens before pagination,
+    // even when the Pics database uses a separate SQL Server connection.
+    if ($approvalFilter !== 'all') {
+        $approvalPdo = ApprovalDatabase::connection();
+        $approvalRowsForFilter = $approvalPdo->query(
+            'SELECT ProductCode, IsApproved FROM dbo.ProductApproval'
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $pdo->exec("
+            CREATE TABLE #PicturesApproval (
+                ProductCode NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY,
+                IsApproved BIT NOT NULL
+            )
+        ");
+
+        $approvalValues = [];
+        foreach ($approvalRowsForFilter as $approvalRow) {
+            $code = trim((string)($approvalRow['ProductCode'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $normalizedCode = mb_strtolower($code, 'UTF-8');
+            $approvalValues[$normalizedCode] = [$code, (int)$approvalRow['IsApproved']];
+        }
+
+        foreach (array_chunk(array_values($approvalValues), 500) as $approvalChunk) {
+            $valueSql = implode(',', array_fill(0, count($approvalChunk), '(?, ?)'));
+            $insertApproval = $pdo->prepare(
+                "INSERT INTO #PicturesApproval (ProductCode, IsApproved) VALUES {$valueSql}"
+            );
+            $insertParams = [];
+            foreach ($approvalChunk as [$code, $isApproved]) {
+                $insertParams[] = $code;
+                $insertParams[] = $isApproved;
+            }
+            $insertApproval->execute($insertParams);
+        }
+    }
+
     // Filter and paginate products first; fetch all hierarchical paths only for the current page.
     $where = ['p.state = 1'];
     $params = [];
@@ -85,6 +128,23 @@ try {
             WHERE pa.ProductRef = p.ProductID
               AND pa.FileContent IS NOT NULL
               AND DATALENGTH(pa.FileContent) > 0
+        )';
+    }
+
+    if ($approvalFilter === 'approved') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 1
+        )';
+    } elseif ($approvalFilter === 'rejected') {
+        // Rejected includes explicit false and products with no approval record.
+        $where[] = 'NOT EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 1
         )';
     }
 
@@ -262,6 +322,14 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <option value="all" <?= $imageFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
                     <option value="with" <?= $imageFilter === 'with' ? 'selected' : '' ?>>فقط کالاهای دارای تصویر</option>
                     <option value="without" <?= $imageFilter === 'without' ? 'selected' : '' ?>>فقط کالاهای بدون تصویر</option>
+                </select>
+            </div>
+            <div class="filter-status">
+                <label for="approval">وضعیت تأیید</label>
+                <select id="approval" name="approval">
+                    <option value="all" <?= $approvalFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
+                    <option value="approved" <?= $approvalFilter === 'approved' ? 'selected' : '' ?>>تأیید شده</option>
+                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>رد شده / تأیید نشده</option>
                 </select>
             </div>
             <div class="filter-actions">
