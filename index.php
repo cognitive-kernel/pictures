@@ -2,11 +2,14 @@
 declare(strict_types=1);
 
 use Pictures\Database;
+use Pictures\ApprovalDatabase;
 
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
 
 const PAGE_SIZE = 25;
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+if (empty($_SESSION['approval_csrf'])) $_SESSION['approval_csrf'] = bin2hex(random_bytes(32));
 
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
@@ -19,6 +22,7 @@ $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : '
 $products = [];
 $total = 0;
 $errorMessage = null;
+$approvalError = null;
 $totalPages = 1;
 $search = trim((string)($_GET['q'] ?? ''));
 if (mb_strlen($search, 'UTF-8') > 100) {
@@ -163,6 +167,28 @@ try {
     $statement->execute();
     $products = $statement->fetchAll(PDO::FETCH_ASSOC);
 
+
+    try {
+        $codes = array_values(array_unique(array_filter(array_map(static fn(array $row): string => trim((string)($row['Number'] ?? '')), $products), static fn(string $value): bool => $value !== '')));
+        $approvalMap = [];
+        if ($codes) {
+            $approvalPdo = ApprovalDatabase::connection();
+            $marks = implode(',', array_fill(0, count($codes), '?'));
+            $approvalQuery = $approvalPdo->prepare("SELECT ProductCode, IsApproved, ModifiedAt FROM dbo.ProductApproval WHERE ProductCode IN ({$marks})");
+            $approvalQuery->execute($codes);
+            foreach ($approvalQuery->fetchAll(PDO::FETCH_ASSOC) as $item) $approvalMap[(string)$item['ProductCode']] = $item;
+        }
+        foreach ($products as &$product) {
+            $item = $approvalMap[trim((string)($product['Number'] ?? ''))] ?? null;
+            $product['IsApproved'] = $item === null ? null : (int)$item['IsApproved'];
+            $product['ApprovalModifiedAt'] = $item['ModifiedAt'] ?? null;
+        }
+        unset($product);
+    } catch (Throwable $approvalException) {
+        error_log('Pictures approval lookup failed: '.$approvalException->getMessage());
+        $approvalError = 'اتصال به دیتابیس تأیید کالا برقرار نشد. تنظیمات Pics را بررسی کنید.';
+    }
+
     $queryEndTime = microtime(true);
     header('X-Debug-DB-Connect: ' . round(($dbConnectTime - $requestStart) * 1000) . ' ms');
     header('X-Debug-SQL: ' . round(($queryEndTime - $dbConnectTime) * 1000) . ' ms');
@@ -197,6 +223,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
     <script src="assets/app.js" defer></script>
 </head>
 <body>
+<script>window.PICTURES_APPROVAL_CSRF = <?= json_encode($_SESSION['approval_csrf'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <header class="topbar">
     <div class="container topbar-inner">
         <div>
@@ -234,6 +261,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                 <a class="report-link" href="index.php">پاک کردن</a>
             </div>
         </form>
+        <?php if ($approvalError !== null): ?><section class="notice error" role="alert"><p><?= e($approvalError) ?></p></section><?php endif; ?>
         <section class="toolbar" aria-label="اطلاعات فهرست">
             <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> نتیجه</p>
             <p>صفحه <?= e(number_format($page)) ?> از <?= e(number_format($totalPages)) ?></p>
@@ -246,9 +274,11 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <th><?= sortLink('name', 'نام کالا', $sort, $direction) ?></th>
                     <th>محل انبار</th>
                     <th>مسیر کامل</th>
+                    <th>مورد تأیید</th>
+                    <th>آخرین ثبت/ویرایش</th>
                 </tr></thead>
                 <tbody>
-                <?php if (!$products): ?><tr><td colspan="5" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
+                <?php if (!$products): ?><tr><td colspan="7" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($products as $product): ?>
                     <tr>
                         <td class="image-col">
@@ -266,6 +296,13 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         <td><?= e($product['Name'] ?? '—') ?></td>
                         <td><?= e($product['WarehouseLocation'] ?? '—') ?></td>
                         <td><?= e($product['ProductPath'] ?? '—') ?></td>
+                        <td data-label="مورد تأیید">
+                            <select class="approval-select" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $product['IsApproved'] === null ? '' : (string)$product['IsApproved'] ?>" <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
+                                <option value="0" <?= $product['IsApproved'] !== 1 ? 'selected' : '' ?>>تأیید نشده</option>
+                                <option value="1" <?= $product['IsApproved'] === 1 ? 'selected' : '' ?>>تأیید شده</option>
+                            </select>
+                        </td>
+                        <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e($product['ApprovalModifiedAt'] ?? 'ثبت نشده') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
