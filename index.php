@@ -177,12 +177,15 @@ try {
             $marks = implode(',', array_fill(0, count($codes), '?'));
             $approvalQuery = $approvalPdo->prepare("SELECT ProductCode, IsApproved, ModifiedAt FROM dbo.ProductApproval WHERE ProductCode IN ({$marks})");
             $approvalQuery->execute($codes);
-            foreach ($approvalQuery->fetchAll(PDO::FETCH_ASSOC) as $item) $approvalMap[(string)$item['ProductCode']] = $item;
+            foreach ($approvalQuery->fetchAll(PDO::FETCH_ASSOC) as $item) {
+                $normalized = array_change_key_case($item, CASE_LOWER);
+                $approvalMap[(string)$normalized['productcode']] = $normalized;
+            }
         }
         foreach ($products as &$product) {
             $item = $approvalMap[trim((string)($product['Number'] ?? ''))] ?? null;
-            $product['IsApproved'] = $item === null ? null : (int)$item['IsApproved'];
-            $product['ApprovalModifiedAt'] = $item['ModifiedAt'] ?? null;
+            $product['IsApproved'] = $item === null ? null : (int)$item['isapproved'];
+            $product['ApprovalModifiedAt'] = $item['modifiedat'] ?? null;
         }
         unset($product);
     } catch (Throwable $approvalException) {
@@ -302,10 +305,20 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         <td data-label="محل انبار"><?= e($product['WarehouseLocation'] ?? '—') ?></td>
                         <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
                         <td data-label="مورد تأیید">
-                            <select class="approval-select" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $product['IsApproved'] === null ? '' : (string)$product['IsApproved'] ?>" <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
-                                <option value="0" <?= $product['IsApproved'] !== 1 ? 'selected' : '' ?>>تأیید نشده</option>
-                                <option value="1" <?= $product['IsApproved'] === 1 ? 'selected' : '' ?>>تأیید شده</option>
-                            </select>
+                            <?php $isApproved = (int)($product['IsApproved'] ?? 0) === 1; ?>
+                            <div class="approval-dropdown" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $isApproved ? '1' : '0' ?>">
+                                <button type="button"
+                                        class="approval-trigger <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
+                                        aria-haspopup="true" aria-expanded="false"
+                                        <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
+                                    <span class="approval-trigger-label"><?= $isApproved ? 'تأیید شده' : 'تأیید نشده' ?></span>
+                                    <span class="approval-trigger-arrow" aria-hidden="true">▾</span>
+                                </button>
+                                <div class="approval-menu" role="menu" hidden>
+                                    <button type="button" role="menuitem" data-approval-value="1" class="approval-option is-approved">تأیید شده</button>
+                                    <button type="button" role="menuitem" data-approval-value="0" class="approval-option is-pending">تأیید نشده</button>
+                                </div>
+                            </div>
                         </td>
                         <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e($product['ApprovalModifiedAt'] ?? 'ثبت نشده') ?></td>
                     </tr>
