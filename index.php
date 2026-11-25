@@ -6,6 +6,7 @@ use Pictures\ApprovalDatabase;
 
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
+require_once __DIR__ . '/app/ApprovalDatabase.php';
 
 const PAGE_SIZE = 25;
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
