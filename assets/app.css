@@ -180,3 +180,146 @@ tbody tr:hover { background: #f8fbff; }
     .report-summary { grid-template-columns: minmax(0, 1fr); }
     .topbar-inner > * { min-width: 0; max-width: 100%; }
 }
+
+
+/* Mobile card layout override: avoid native table sizing on narrow screens. */
+@media screen and (max-width: 700px) {
+    html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+        overflow-x: clip;
+    }
+    .main-content, .table-wrap {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+    .table-wrap {
+        display: block;
+        overflow: visible !important;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+    .table-wrap > table,
+    .table-wrap > table.report-table {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        table-layout: fixed;
+        border: 0;
+    }
+    .table-wrap > table > thead { display: none !important; }
+    .table-wrap > table > tbody {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .table-wrap > table > tbody > tr {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        margin: 0 0 12px;
+        padding: 7px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 3px 12px #1e293b08;
+    }
+    .table-wrap > table > tbody > tr > td {
+        display: grid !important;
+        grid-template-columns: minmax(0, 28%) minmax(0, 1fr) !important;
+        align-items: start;
+        gap: 8px;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        padding: 9px 2px;
+        border: 0;
+        border-bottom: 1px solid #edf1f6;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        text-align: right;
+    }
+    .table-wrap > table > tbody > tr > td:last-child { border-bottom: 0; }
+    .table-wrap > table > tbody > tr > td::before {
+        display: block;
+        min-width: 0;
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        white-space: normal;
+    }
+    .table-wrap > table > tbody > tr > td.empty {
+        display: block !important;
+        text-align: center;
+    }
+    .table-wrap > table > tbody > tr > td.empty::before { content: none; }
+    .table-wrap .product-number,
+    .table-wrap .approval-time {
+        direction: ltr;
+        text-align: right;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-all;
+    }
+    .table-wrap .approval-control {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 9px;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+    .table-wrap .approval-switch {
+        display: inline-flex !important;
+        visibility: visible !important;
+        flex: 0 0 50px !important;
+        width: 50px !important;
+        min-width: 50px !important;
+        max-width: 50px !important;
+        height: 30px !important;
+        min-height: 30px !important;
+        padding: 3px !important;
+        border: 0 !important;
+        border-radius: 999px !important;
+        opacity: 1;
+        touch-action: manipulation;
+    }
+    .table-wrap .approval-switch:disabled { opacity: .55; }
+    .table-wrap .approval-switch-knob {
+        display: block !important;
+        flex: 0 0 24px;
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px;
+        border-radius: 50%;
+        background: #fff;
+    }
+    .table-wrap .approval-switch.is-approved .approval-switch-knob { transform: translateX(-20px); }
+    .table-wrap .approval-switch-label {
+        display: inline-block !important;
+        visibility: visible !important;
+        min-width: 0;
+        max-width: calc(100% - 60px);
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font-size: 12px;
+    }
+}
+@media screen and (max-width: 380px) {
+    .table-wrap > table > tbody > tr > td {
+        grid-template-columns: minmax(0, 25%) minmax(0, 1fr) !important;
+        gap: 6px;
+        font-size: 12px;
+    }
+}
