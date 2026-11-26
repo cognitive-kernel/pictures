@@ -1,0 +1,11 @@
+<?php
+declare(strict_types=1);
+/** Copy to pics.local.php. Never commit real credentials. */
+return [
+ 'server'=>'192.168.1.76',
+ 'database'=>'Pics',
+ 'username'=>'YOUR_PICS_SQL_USERNAME',
+ 'password'=>'YOUR_PICS_SQL_PASSWORD',
+ 'trust_server_certificate'=>true,
+ 'login_timeout'=>5,
+];

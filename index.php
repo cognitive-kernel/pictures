@@ -2,11 +2,15 @@
 declare(strict_types=1);
 
 use Pictures\Database;
+use Pictures\ApprovalDatabase;
 
 require_once __DIR__ . '/app/helpers.php';
 require_once __DIR__ . '/app/Database.php';
+require_once __DIR__ . '/app/ApprovalDatabase.php';
 
 const PAGE_SIZE = 25;
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+if (empty($_SESSION['approval_csrf'])) $_SESSION['approval_csrf'] = bin2hex(random_bytes(32));
 
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
 $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
@@ -19,6 +23,7 @@ $direction = strtolower((string)($_GET['dir'] ?? 'asc')) === 'desc' ? 'desc' : '
 $products = [];
 $total = 0;
 $errorMessage = null;
+$approvalError = null;
 $totalPages = 1;
 $search = trim((string)($_GET['q'] ?? ''));
 if (mb_strlen($search, 'UTF-8') > 100) {
@@ -27,6 +32,10 @@ if (mb_strlen($search, 'UTF-8') > 100) {
 $imageFilter = (string)($_GET['image'] ?? 'all');
 if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
     $imageFilter = 'all';
+}
+$approvalFilter = (string)($_GET['approval'] ?? 'all');
+if (!in_array($approvalFilter, ['all', 'unregistered', 'registered', 'approved', 'rejected', 'rejected_or_unregistered'], true)) {
+    $approvalFilter = 'all';
 }
 
 try {
@@ -55,6 +64,45 @@ try {
     ");
     $pdo->exec('CREATE UNIQUE CLUSTERED INDEX IX_PicturesTree_Position ON #PicturesTree (StorePositionID)');
 
+    // Load approval states into a local temp table so filtering happens before pagination,
+    // even when the Pics database uses a separate SQL Server connection.
+    if ($approvalFilter !== 'all') {
+        $approvalPdo = ApprovalDatabase::connection();
+        $approvalRowsForFilter = $approvalPdo->query(
+            'SELECT ProductCode, IsApproved FROM dbo.ProductApproval'
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $pdo->exec("
+            CREATE TABLE #PicturesApproval (
+                ProductCode NVARCHAR(100) COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY,
+                IsApproved BIT NOT NULL
+            )
+        ");
+
+        $approvalValues = [];
+        foreach ($approvalRowsForFilter as $approvalRow) {
+            $code = trim((string)($approvalRow['ProductCode'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $normalizedCode = mb_strtolower($code, 'UTF-8');
+            $approvalValues[$normalizedCode] = [$code, (int)$approvalRow['IsApproved']];
+        }
+
+        foreach (array_chunk(array_values($approvalValues), 500) as $approvalChunk) {
+            $valueSql = implode(',', array_fill(0, count($approvalChunk), '(?, ?)'));
+            $insertApproval = $pdo->prepare(
+                "INSERT INTO #PicturesApproval (ProductCode, IsApproved) VALUES {$valueSql}"
+            );
+            $insertParams = [];
+            foreach ($approvalChunk as [$code, $isApproved]) {
+                $insertParams[] = $code;
+                $insertParams[] = $isApproved;
+            }
+            $insertApproval->execute($insertParams);
+        }
+    }
+
     // Filter and paginate products first; fetch all hierarchical paths only for the current page.
     $where = ['p.state = 1'];
     $params = [];
@@ -80,6 +128,41 @@ try {
             WHERE pa.ProductRef = p.ProductID
               AND pa.FileContent IS NOT NULL
               AND DATALENGTH(pa.FileContent) > 0
+        )';
+    }
+
+    if ($approvalFilter === 'unregistered') {
+        $where[] = 'NOT EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+        )';
+    } elseif ($approvalFilter === 'registered') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+        )';
+    } elseif ($approvalFilter === 'approved') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 1
+        )';
+    } elseif ($approvalFilter === 'rejected') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 0
+        )';
+    } elseif ($approvalFilter === 'rejected_or_unregistered') {
+        $where[] = 'NOT EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 1
         )';
     }
 
@@ -163,6 +246,31 @@ try {
     $statement->execute();
     $products = $statement->fetchAll(PDO::FETCH_ASSOC);
 
+
+    try {
+        $codes = array_values(array_unique(array_filter(array_map(static fn(array $row): string => trim((string)($row['Number'] ?? '')), $products), static fn(string $value): bool => $value !== '')));
+        $approvalMap = [];
+        if ($codes) {
+            $approvalPdo = ApprovalDatabase::connection();
+            $marks = implode(',', array_fill(0, count($codes), '?'));
+            $approvalQuery = $approvalPdo->prepare("SELECT ProductCode, IsApproved, ModifiedAt FROM dbo.ProductApproval WHERE ProductCode IN ({$marks})");
+            $approvalQuery->execute($codes);
+            foreach ($approvalQuery->fetchAll(PDO::FETCH_ASSOC) as $item) {
+                $normalized = array_change_key_case($item, CASE_LOWER);
+                $approvalMap[(string)$normalized['productcode']] = $normalized;
+            }
+        }
+        foreach ($products as &$product) {
+            $item = $approvalMap[trim((string)($product['Number'] ?? ''))] ?? null;
+            $product['IsApproved'] = $item === null ? null : (int)$item['isapproved'];
+            $product['ApprovalModifiedAt'] = $item['modifiedat'] ?? null;
+        }
+        unset($product);
+    } catch (Throwable $approvalException) {
+        error_log('Pictures approval lookup failed: '.$approvalException->getMessage());
+        $approvalError = 'اتصال به دیتابیس تأیید کالا برقرار نشد. تنظیمات Pics را بررسی کنید.';
+    }
+
     $queryEndTime = microtime(true);
     header('X-Debug-DB-Connect: ' . round(($dbConnectTime - $requestStart) * 1000) . ' ms');
     header('X-Debug-SQL: ' . round(($queryEndTime - $dbConnectTime) * 1000) . ' ms');
@@ -193,10 +301,11 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>گالری تصاویر کالاها</title>
-    <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/app.css?v=20261125-mobile-cards-2">
     <script src="assets/app.js" defer></script>
 </head>
 <body>
+<script>window.PICTURES_APPROVAL_CSRF = <?= json_encode($_SESSION['approval_csrf'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <header class="topbar">
     <div class="container topbar-inner">
         <div>
@@ -204,6 +313,10 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <h1>گالری تصاویر کالاها</h1>
             <p class="subtitle">مشاهده کالاها و تصاویر پیوست‌شده در سیستم راهکاران</p>
         </div>
+        <nav class="main-nav" aria-label="منوی اصلی">
+            <a class="active" href="index.php">گالری کالاها</a>
+            <a href="report.php">گزارش تأیید</a>
+        </nav>
         <div class="total-box"><span>تعداد نتایج</span><strong><?= e(number_format($total)) ?></strong></div>
     </div>
 </header>
@@ -229,11 +342,23 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <option value="without" <?= $imageFilter === 'without' ? 'selected' : '' ?>>فقط کالاهای بدون تصویر</option>
                 </select>
             </div>
+            <div class="filter-status">
+                <label for="approval">وضعیت ثبت کالا</label>
+                <select id="approval" name="approval">
+                    <option value="rejected_or_unregistered" <?= $approvalFilter === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده‌ها و تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>ردشده‌های ثبت‌شده</option>
+                    <option value="unregistered" <?= $approvalFilter === 'unregistered' ? 'selected' : '' ?>>تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="registered" <?= $approvalFilter === 'registered' ? 'selected' : '' ?>>ثبت‌شده‌ها (تأییدشده و ردشده)</option>
+                    <option value="approved" <?= $approvalFilter === 'approved' ? 'selected' : '' ?>>تأییدشده‌ها</option>
+                    <option value="all" <?= $approvalFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
+                </select>
+            </div>
             <div class="filter-actions">
                 <button type="submit" class="report-link">اعمال فیلتر</button>
                 <a class="report-link" href="index.php">پاک کردن</a>
             </div>
         </form>
+        <?php if ($approvalError !== null): ?><section class="notice error" role="alert"><p><?= e($approvalError) ?></p></section><?php endif; ?>
         <section class="toolbar" aria-label="اطلاعات فهرست">
             <p>نمایش <?= e(number_format(count($products))) ?> کالا از <?= e(number_format($total)) ?> نتیجه</p>
             <p>صفحه <?= e(number_format($page)) ?> از <?= e(number_format($totalPages)) ?></p>
@@ -246,12 +371,14 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <th><?= sortLink('name', 'نام کالا', $sort, $direction) ?></th>
                     <th>محل انبار</th>
                     <th>مسیر کامل</th>
+                    <th>وضعیت ثبت</th>
+                    <th>آخرین ثبت/ویرایش</th>
                 </tr></thead>
                 <tbody>
-                <?php if (!$products): ?><tr><td colspan="5" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
+                <?php if (!$products): ?><tr><td colspan="7" class="empty">رکوردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($products as $product): ?>
                     <tr>
-                        <td class="image-col">
+                        <td class="image-col" data-label="تصویر">
                             <?php if ((int)$product['HasImage'] === 1): ?>
                                 <button class="thumbnail-button js-open-image" type="button"
                                         data-image="image.php?id=<?= rawurlencode((string)$product['ProductID']) ?>"
@@ -262,10 +389,25 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                                 </button>
                             <?php else: ?><span class="no-image">بدون تصویر</span><?php endif; ?>
                         </td>
-                        <td class="product-number"><?= e($product['Number'] ?? '—') ?></td>
-                        <td><?= e($product['Name'] ?? '—') ?></td>
-                        <td><?= e($product['WarehouseLocation'] ?? '—') ?></td>
-                        <td><?= e($product['ProductPath'] ?? '—') ?></td>
+                        <td class="product-number" data-label="شماره کالا"><?= e($product['Number'] ?? '—') ?></td>
+                        <td data-label="نام کالا"><?= e($product['Name'] ?? '—') ?></td>
+                        <td data-label="محل انبار"><?= e($product['WarehouseLocation'] ?? '—') ?></td>
+                        <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
+                        <td data-label="وضعیت ثبت">
+                            <?php $approvalState = $product['IsApproved'] ?? null; $isRegistered = $approvalState !== null; $isApproved = $isRegistered && (int)$approvalState === 1; ?>
+                            <div class="approval-control" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= !$isRegistered ? 'unregistered' : ($isApproved ? '1' : '0') ?>">
+                                <button type="button"
+                                        class="approval-switch <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
+                                        role="switch"
+                                        aria-checked="<?= $isApproved ? 'true' : 'false' ?>"
+                                        aria-label="وضعیت تأیید کالا"
+                                        <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
+                                    <span class="approval-switch-knob"></span>
+                                </button>
+                                <span class="approval-switch-label"><?= !$isRegistered ? 'ثبت‌نشده' : ($isApproved ? 'تأییدشده' : 'ردشده') ?></span>
+                            </div>
+                        </td>
+                        <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e(jalaliDateTime($product['ApprovalModifiedAt'] ?? null)) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -305,6 +447,6 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
     <div class="lightbox-stage"><img id="lightbox-image" alt=""></div>
     <p class="lightbox-hint">برای بستن، بیرون تصویر کلیک کنید یا کلید Escape را بزنید.</p>
 </div>
-<footer class="footer"><div class="container">گالری تصاویر کالاها · اتصال فقط خواندنی</div></footer>
+<footer class="footer"><div class="container">گالری تصاویر کالاها · اطلاعات راهکاران و ثبت تأیید در Pics</div></footer>
 </body>
 </html>

@@ -82,3 +82,253 @@ tbody tr:hover { background: #f8fbff; }
     .thumbnail-button { width: 56px; height: 48px; }
     .lightbox { padding: 62px 12px 20px; }
 }
+
+
+.approval-control { display: inline-flex; align-items: center; justify-content: flex-start; gap: 9px; min-width: 0; max-width: 100%; }
+.approval-switch { position: relative; display: inline-flex; flex: 0 0 48px; align-items: center; width: 48px; height: 28px; padding: 3px; border: 0; border-radius: 999px; background: #cbd5e1; cursor: pointer; transition: background .18s ease; }
+.approval-switch.is-approved { background: #22a05a; }
+.approval-switch.is-pending { background: #94a3b8; }
+.approval-switch-knob { display: block; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0f172a40; transform: translateX(0); transition: transform .18s ease; }
+.approval-switch.is-approved .approval-switch-knob { transform: translateX(-20px); }
+.approval-switch:focus-visible { outline: 3px solid #2457c533; outline-offset: 3px; }
+.approval-switch:disabled { opacity: .55; cursor: not-allowed; }
+.approval-switch-label { color: #64748b; font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.approval-control:has(.approval-switch.is-approved) .approval-switch-label { color: #17663a; font-weight: 700; }
+.approval-control.is-saving .approval-switch { opacity: .6; cursor: wait; }
+.approval-time { white-space: nowrap; color: #64748b; font-size: 12px; direction: ltr; text-align: right; }
+@media (max-width: 700px) {
+    .table-wrap { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+    table { display: block; min-width: 0; width: 100%; }
+    thead { display: none; }
+    tbody { display: grid; gap: 12px; }
+    tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 3px 12px #1e293b08; }
+    tbody tr:last-child td { border-bottom: 1px solid #edf1f6; }
+    tbody tr td { display: grid; grid-template-columns: minmax(92px, 34%) minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; padding: 9px 2px; border-bottom: 1px solid #edf1f6; overflow-wrap: anywhere; text-align: right; }
+    tbody tr td::before { content: attr(data-label); color: #64748b; font-size: 11px; font-weight: 700; }
+    tbody tr td.image-col { justify-items: start; text-align: right; }
+    tbody tr td.empty { display: block; text-align: center; }
+    tbody tr td.empty::before { content: none; }
+    .approval-dropdown { width: min(100%, 160px); min-width: 0; }
+    .approval-time { white-space: normal; direction: ltr; }
+}
+@media (max-width: 360px) {
+    tbody tr td { grid-template-columns: minmax(78px, 31%) minmax(0, 1fr); gap: 5px; font-size: 12px; }
+}
+
+
+.main-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.main-nav a { display: inline-block; padding: 8px 13px; border: 1px solid #ffffff55; border-radius: 9px; color: #eaf1ff; text-decoration: none; font-size: 13px; font-weight: 700; }
+.main-nav a:hover, .main-nav a.active { color: #17356d; background: #fff; border-color: #fff; }
+.report-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.report-summary > div { display: flex; flex-direction: column; gap: 4px; padding: 15px 18px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.report-summary span { color: var(--muted); font-size: 13px; }
+.report-summary strong { color: #1e293b; font-size: 24px; font-variant-numeric: tabular-nums; }
+.export-link { background: #effaf3; border-color: #b7e4c7; color: #17663a; }
+.export-link:hover { background: #e2f6e9; border-color: #86d2a2; }
+.status-pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-approved { color: #17663a; background: #e2f6e9; }
+.status-pill.is-pending { color: #92400e; background: #fff4df; }
+.report-table { min-width: 0; }
+@media (max-width: 700px) {
+    .main-nav { width: 100%; }
+    .report-summary { gap: 7px; }
+    .report-summary > div { padding: 11px 9px; }
+    .report-summary span { font-size: 11px; }
+    .report-summary strong { font-size: 20px; }
+    .report-table { display: block; width: 100%; }
+    .report-table thead { display: none; }
+    .report-table tbody { display: grid; gap: 10px; }
+    .report-table tbody tr { display: grid; gap: 0; padding: 7px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    .report-table tbody tr td { display: grid; grid-template-columns: minmax(105px, 35%) minmax(0, 1fr); gap: 8px; min-width: 0; padding: 9px 2px; border-bottom: 1px solid #edf1f6; overflow-wrap: anywhere; }
+    .report-table tbody tr td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700; }
+    .report-table tbody tr td.empty { display: block; text-align: center; }
+    .report-table tbody tr td.empty::before { content: none; }
+}
+@media (max-width: 360px) {
+    .report-summary { grid-template-columns: 1fr; }
+}
+
+/* Strict narrow-screen layout: product rows become independent cards, never a wide table. */
+@media (max-width: 700px) {
+    html, body { width: 100%; max-width: 100%; overflow-x: clip; }
+    .container, .main-content, .topbar-inner, .filters, .toolbar, .table-wrap { width: 100%; max-width: 100%; min-width: 0; }
+    .container { padding-inline: 10px; }
+    .table-wrap { overflow: visible; }
+    .table-wrap table, .table-wrap .report-table { display: block; width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; }
+    .table-wrap thead { display: none; }
+    .table-wrap tbody { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; gap: 12px; }
+    .table-wrap tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; max-width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    .table-wrap tbody tr td,
+    .table-wrap .report-table tbody tr td { display: grid; grid-template-columns: minmax(0, 30%) minmax(0, 1fr); align-items: start; gap: 8px; width: 100%; min-width: 0; max-width: 100%; padding: 9px 2px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .table-wrap tbody tr td::before { min-width: 0; content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700; }
+    .table-wrap tbody tr td > * { min-width: 0; max-width: 100%; }
+    .table-wrap tbody tr td.product-number { direction: ltr; text-align: right; overflow-wrap: anywhere; word-break: break-all; }
+    .table-wrap tbody tr td.approval-time { direction: ltr; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+    .table-wrap tbody tr td.image-col { justify-items: start; }
+    .table-wrap tbody tr td.empty { display: block; text-align: center; }
+    .table-wrap tbody tr td.empty::before { content: none; }
+    .approval-control { flex-wrap: wrap; }
+    .filters > *, .filter-search, .filter-status, .filter-actions { min-width: 0; max-width: 100%; }
+    .filter-actions { width: 100%; }
+    .toolbar { flex-wrap: wrap; }
+    .report-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
+    .main-nav { min-width: 0; }
+}
+@media (max-width: 380px) {
+    .table-wrap tbody tr td,
+    .table-wrap .report-table tbody tr td { grid-template-columns: minmax(0, 26%) minmax(0, 1fr); gap: 6px; font-size: 12px; }
+    .report-summary { grid-template-columns: minmax(0, 1fr); }
+    .topbar-inner > * { min-width: 0; max-width: 100%; }
+}
+
+
+/* Mobile card layout override: avoid native table sizing on narrow screens. */
+@media screen and (max-width: 700px) {
+    html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+        overflow-x: clip;
+    }
+    .main-content, .table-wrap {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+    .table-wrap {
+        display: block;
+        overflow: visible !important;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+    .table-wrap > table,
+    .table-wrap > table.report-table {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        table-layout: fixed;
+        border: 0;
+    }
+    .table-wrap > table > thead { display: none !important; }
+    .table-wrap > table > tbody {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .table-wrap > table > tbody > tr {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        margin: 0 0 12px;
+        padding: 7px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 3px 12px #1e293b08;
+    }
+    .table-wrap > table > tbody > tr > td {
+        display: grid !important;
+        grid-template-columns: minmax(0, 28%) minmax(0, 1fr) !important;
+        align-items: start;
+        gap: 8px;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        padding: 9px 2px;
+        border: 0;
+        border-bottom: 1px solid #edf1f6;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        text-align: right;
+    }
+    .table-wrap > table > tbody > tr > td:last-child { border-bottom: 0; }
+    .table-wrap > table > tbody > tr > td::before {
+        display: block;
+        min-width: 0;
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        white-space: normal;
+    }
+    .table-wrap > table > tbody > tr > td.empty {
+        display: block !important;
+        text-align: center;
+    }
+    .table-wrap > table > tbody > tr > td.empty::before { content: none; }
+    .table-wrap .product-number,
+    .table-wrap .approval-time {
+        direction: ltr;
+        text-align: right;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-all;
+    }
+    .table-wrap .approval-control {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 9px;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+    .table-wrap .approval-switch {
+        display: inline-flex !important;
+        visibility: visible !important;
+        flex: 0 0 50px !important;
+        width: 50px !important;
+        min-width: 50px !important;
+        max-width: 50px !important;
+        height: 30px !important;
+        min-height: 30px !important;
+        padding: 3px !important;
+        border: 0 !important;
+        border-radius: 999px !important;
+        opacity: 1;
+        touch-action: manipulation;
+    }
+    .table-wrap .approval-switch:disabled { opacity: .55; }
+    .table-wrap .approval-switch-knob {
+        display: block !important;
+        flex: 0 0 24px;
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px;
+        border-radius: 50%;
+        background: #fff;
+    }
+    .table-wrap .approval-switch.is-approved .approval-switch-knob { transform: translateX(-20px); }
+    .table-wrap .approval-switch-label {
+        display: inline-block !important;
+        visibility: visible !important;
+        min-width: 0;
+        max-width: calc(100% - 60px);
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font-size: 12px;
+    }
+}
+@media screen and (max-width: 380px) {
+    .table-wrap > table > tbody > tr > td {
+        grid-template-columns: minmax(0, 25%) minmax(0, 1fr) !important;
+        gap: 6px;
+        font-size: 12px;
+    }
+}
+
+/* Four report summary metrics: keep the added status count aligned at every width. */
+.report-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 700px) {
+    .report-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+    .report-summary { grid-template-columns: minmax(0, 1fr); }
+}
