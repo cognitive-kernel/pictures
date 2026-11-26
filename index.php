@@ -34,7 +34,7 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
     $imageFilter = 'all';
 }
 $approvalFilter = (string)($_GET['approval'] ?? 'all');
-if (!in_array($approvalFilter, ['all', 'unregistered', 'registered', 'rejected', 'rejected_or_unregistered'], true)) {
+if (!in_array($approvalFilter, ['all', 'unregistered', 'registered', 'approved', 'rejected', 'rejected_or_unregistered'], true)) {
     $approvalFilter = 'all';
 }
 
@@ -142,6 +142,13 @@ try {
             SELECT 1
             FROM #PicturesApproval approval
             WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+        )';
+    } elseif ($approvalFilter === 'approved') {
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 1
         )';
     } elseif ($approvalFilter === 'rejected') {
         $where[] = 'EXISTS (
@@ -338,10 +345,11 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
             <div class="filter-status">
                 <label for="approval">وضعیت ثبت کالا</label>
                 <select id="approval" name="approval">
-                    <option value="unregistered" <?= $approvalFilter === 'unregistered' ? 'selected' : '' ?>>ثبت‌نشده</option>
-                    <option value="registered" <?= $approvalFilter === 'registered' ? 'selected' : '' ?>>ثبت‌شده (تأییدشده و ردشده)</option>
-                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>ردشده</option>
-                    <option value="rejected_or_unregistered" <?= $approvalFilter === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده یا ثبت‌نشده</option>
+                    <option value="rejected_or_unregistered" <?= $approvalFilter === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده‌ها و تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>ردشده‌های ثبت‌شده</option>
+                    <option value="unregistered" <?= $approvalFilter === 'unregistered' ? 'selected' : '' ?>>تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="registered" <?= $approvalFilter === 'registered' ? 'selected' : '' ?>>ثبت‌شده‌ها (تأییدشده و ردشده)</option>
+                    <option value="approved" <?= $approvalFilter === 'approved' ? 'selected' : '' ?>>تأییدشده‌ها</option>
                     <option value="all" <?= $approvalFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
                 </select>
             </div>
