@@ -9,7 +9,7 @@ require_once __DIR__ . '/app/Database.php';
 require_once __DIR__ . '/app/ApprovalDatabase.php';
 
 $status = (string)($_GET['status'] ?? 'all');
-if (!in_array($status, ['all', 'approved', 'pending'], true)) $status = 'all';
+if (!in_array($status, ['all', 'unregistered', 'registered', 'rejected', 'rejected_or_unregistered'], true)) $status = 'all';
 $search = trim((string)($_GET['q'] ?? ''));
 if (mb_strlen($search, 'UTF-8') > 100) $search = mb_substr($search, 0, 100, 'UTF-8');
 
@@ -34,20 +34,29 @@ try {
     foreach ($approvalRows as $row) $approvalMap[(string)$row['ProductCode']] = $row;
 
     $rows = [];
-    $counts = ['all' => 0, 'approved' => 0, 'pending' => 0];
+    $counts = ['all' => 0, 'registered' => 0, 'rejected' => 0, 'rejected_or_unregistered' => 0];
     foreach ($products as $product) {
         $code = trim((string)$product['ProductCode']);
         $approval = $approvalMap[$code] ?? null;
-        $isApproved = $approval !== null && (int)$approval['IsApproved'] === 1;
+        $isRegistered = $approval !== null;
+        $isApproved = $isRegistered && (int)$approval['IsApproved'] === 1;
+        $isRejected = $isRegistered && !$isApproved;
+
         $counts['all']++;
-        $counts[$isApproved ? 'approved' : 'pending']++;
-        if ($status === 'approved' && !$isApproved) continue;
-        if ($status === 'pending' && $isApproved) continue;
+        if ($isRegistered) $counts['registered']++;
+        if ($isRejected) $counts['rejected']++;
+        if (!$isApproved) $counts['rejected_or_unregistered']++;
+
+        if ($status === 'unregistered' && $isRegistered) continue;
+        if ($status === 'registered' && !$isRegistered) continue;
+        if ($status === 'rejected' && !$isRejected) continue;
+        if ($status === 'rejected_or_unregistered' && $isApproved) continue;
+
         $rows[] = [
             'ProductCode' => $code,
             'ProductName' => (string)($product['ProductName'] ?? ''),
-            'Status' => $isApproved ? 'تأیید شده' : 'تأیید نشده',
-            'ModifiedAt' => $approval['ModifiedAt'] ?? null,
+            'Status' => !$isRegistered ? 'ثبت‌نشده' : ($isApproved ? 'تأییدشده' : 'ردشده'),
+            'ModifiedAt' => jalaliDateTime($approval['ModifiedAt'] ?? null),
         ];
     }
 
@@ -58,9 +67,9 @@ try {
         header('Cache-Control: no-store, no-cache, must-revalidate');
         echo "\xEF\xBB\xBF";
         $out = fopen('php://output', 'wb');
-        fputcsv($out, ['کد کالا', 'نام کالا', 'وضعیت تأیید', 'آخرین ثبت/ویرایش']);
+        fputcsv($out, ['کد کالا', 'نام کالا', 'وضعیت ثبت', 'آخرین ثبت/ویرایش']);
         foreach ($rows as $row) {
-            $values = [$row['ProductCode'], $row['ProductName'], $row['Status'], $row['ModifiedAt'] ?? 'ثبت نشده'];
+            $values = [$row['ProductCode'], $row['ProductName'], $row['Status'], $row['ModifiedAt']];
             foreach ($values as &$value) {
                 if (preg_match('/^[=+@\-\t\r]/u', (string)$value)) $value = "'" . $value;
             }
@@ -113,9 +122,10 @@ function reportUrl(array $changes = []): string {
         <section class="notice error" role="alert"><h2>خطا در تهیه گزارش</h2><p><?= e($errorMessage) ?></p></section>
     <?php else: ?>
         <section class="report-summary" aria-label="خلاصه گزارش">
-            <div><span>کل کالاها</span><strong><?= number_format($counts['all']) ?></strong></div>
-            <div><span>تأیید شده</span><strong><?= number_format($counts['approved']) ?></strong></div>
-            <div><span>تأیید نشده</span><strong><?= number_format($counts['pending']) ?></strong></div>
+            <div><span>همه کالاها</span><strong><?= number_format($counts['all']) ?></strong></div>
+            <div><span>ثبت‌شده‌ها</span><strong><?= number_format($counts['registered']) ?></strong></div>
+            <div><span>ردشده‌ها</span><strong><?= number_format($counts['rejected']) ?></strong></div>
+            <div><span>ردشده یا ثبت‌نشده</span><strong><?= number_format($counts['rejected_or_unregistered']) ?></strong></div>
         </section>
         <form class="filters" method="get" action="report.php">
             <div class="filter-search">
@@ -123,11 +133,13 @@ function reportUrl(array $changes = []): string {
                 <input id="q" name="q" type="search" maxlength="100" value="<?= e($search) ?>" placeholder="کد یا بخشی از نام کالا">
             </div>
             <div class="filter-status">
-                <label for="status">وضعیت تأیید</label>
+                <label for="status">وضعیت ثبت کالا</label>
                 <select id="status" name="status">
-                    <option value="all" <?= $status === 'all' ? 'selected' : '' ?>>همه موارد</option>
-                    <option value="approved" <?= $status === 'approved' ? 'selected' : '' ?>>فقط تأیید شده</option>
-                    <option value="pending" <?= $status === 'pending' ? 'selected' : '' ?>>فقط تأیید نشده</option>
+                    <option value="unregistered" <?= $status === 'unregistered' ? 'selected' : '' ?>>ثبت‌نشده</option>
+                    <option value="registered" <?= $status === 'registered' ? 'selected' : '' ?>>ثبت‌شده (تأییدشده و ردشده)</option>
+                    <option value="rejected" <?= $status === 'rejected' ? 'selected' : '' ?>>ردشده</option>
+                    <option value="rejected_or_unregistered" <?= $status === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده یا ثبت‌نشده</option>
+                    <option value="all" <?= $status === 'all' ? 'selected' : '' ?>>همه کالاها</option>
                 </select>
             </div>
             <div class="filter-actions">
@@ -142,14 +154,14 @@ function reportUrl(array $changes = []): string {
         </section>
         <div class="table-wrap">
             <table class="report-table">
-                <thead><tr><th>کد کالا</th><th>نام کالا</th><th>وضعیت تأیید</th><th>آخرین ثبت/ویرایش</th></tr></thead>
+                <thead><tr><th>کد کالا</th><th>نام کالا</th><th>وضعیت ثبت</th><th>آخرین ثبت/ویرایش</th></tr></thead>
                 <tbody>
                 <?php if (!$rows): ?><tr><td colspan="4" class="empty">موردی برای نمایش وجود ندارد.</td></tr><?php endif; ?>
                 <?php foreach ($rows as $row): ?>
                     <tr>
                         <td data-label="کد کالا" class="product-number"><?= e($row['ProductCode']) ?></td>
                         <td data-label="نام کالا"><?= e($row['ProductName']) ?></td>
-                        <td data-label="وضعیت تأیید"><span class="status-pill <?= $row['Status'] === 'تأیید شده' ? 'is-approved' : 'is-pending' ?>"><?= e($row['Status']) ?></span></td>
+                        <td data-label="وضعیت ثبت"><span class="status-pill <?= $row['Status'] === 'تأییدشده' ? 'is-approved' : 'is-pending' ?>"><?= e($row['Status']) ?></span></td>
                         <td data-label="آخرین ثبت/ویرایش" class="approval-time"><?= e($row['ModifiedAt'] ?? 'ثبت نشده') ?></td>
                     </tr>
                 <?php endforeach; ?>
