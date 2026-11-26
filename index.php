@@ -34,7 +34,7 @@ if (!in_array($imageFilter, ['all', 'with', 'without'], true)) {
     $imageFilter = 'all';
 }
 $approvalFilter = (string)($_GET['approval'] ?? 'all');
-if (!in_array($approvalFilter, ['all', 'approved', 'rejected'], true)) {
+if (!in_array($approvalFilter, ['all', 'unregistered', 'registered', 'rejected', 'rejected_or_unregistered'], true)) {
     $approvalFilter = 'all';
 }
 
@@ -131,15 +131,26 @@ try {
         )';
     }
 
-    if ($approvalFilter === 'approved') {
+    if ($approvalFilter === 'unregistered') {
+        $where[] = 'NOT EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+        )';
+    } elseif ($approvalFilter === 'registered') {
         $where[] = 'EXISTS (
             SELECT 1
             FROM #PicturesApproval approval
             WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
-              AND approval.IsApproved = 1
         )';
     } elseif ($approvalFilter === 'rejected') {
-        // Rejected includes explicit false and products with no approval record.
+        $where[] = 'EXISTS (
+            SELECT 1
+            FROM #PicturesApproval approval
+            WHERE approval.ProductCode = CONVERT(NVARCHAR(100), gp.Code)
+              AND approval.IsApproved = 0
+        )';
+    } elseif ($approvalFilter === 'rejected_or_unregistered') {
         $where[] = 'NOT EXISTS (
             SELECT 1
             FROM #PicturesApproval approval
@@ -325,11 +336,13 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                 </select>
             </div>
             <div class="filter-status">
-                <label for="approval">وضعیت تأیید</label>
+                <label for="approval">وضعیت ثبت کالا</label>
                 <select id="approval" name="approval">
+                    <option value="unregistered" <?= $approvalFilter === 'unregistered' ? 'selected' : '' ?>>ثبت‌نشده</option>
+                    <option value="registered" <?= $approvalFilter === 'registered' ? 'selected' : '' ?>>ثبت‌شده (تأییدشده و ردشده)</option>
+                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>ردشده</option>
+                    <option value="rejected_or_unregistered" <?= $approvalFilter === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده یا ثبت‌نشده</option>
                     <option value="all" <?= $approvalFilter === 'all' ? 'selected' : '' ?>>همه کالاها</option>
-                    <option value="approved" <?= $approvalFilter === 'approved' ? 'selected' : '' ?>>تأیید شده</option>
-                    <option value="rejected" <?= $approvalFilter === 'rejected' ? 'selected' : '' ?>>رد شده / تأیید نشده</option>
                 </select>
             </div>
             <div class="filter-actions">
@@ -350,7 +363,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                     <th><?= sortLink('name', 'نام کالا', $sort, $direction) ?></th>
                     <th>محل انبار</th>
                     <th>مسیر کامل</th>
-                    <th>مورد تأیید</th>
+                    <th>وضعیت ثبت</th>
                     <th>آخرین ثبت/ویرایش</th>
                 </tr></thead>
                 <tbody>
@@ -372,9 +385,9 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         <td data-label="نام کالا"><?= e($product['Name'] ?? '—') ?></td>
                         <td data-label="محل انبار"><?= e($product['WarehouseLocation'] ?? '—') ?></td>
                         <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
-                        <td data-label="مورد تأیید">
-                            <?php $isApproved = (int)($product['IsApproved'] ?? 0) === 1; ?>
-                            <div class="approval-control" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= $isApproved ? '1' : '0' ?>">
+                        <td data-label="وضعیت ثبت">
+                            <?php $isRegistered = $product['IsApproved'] !== null; $isApproved = $isRegistered && (int)$product['IsApproved'] === 1; ?>
+                            <div class="approval-control" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= !$isRegistered ? 'unregistered' : ($isApproved ? '1' : '0') ?>">
                                 <button type="button"
                                         class="approval-switch <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
                                         role="switch"
@@ -383,10 +396,10 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                                         <?= $approvalError !== null || trim((string)($product['Number'] ?? '')) === '' ? 'disabled' : '' ?>>
                                     <span class="approval-switch-knob"></span>
                                 </button>
-                                <span class="approval-switch-label"><?= $isApproved ? 'تأیید شده' : 'تأیید نشده' ?></span>
+                                <span class="approval-switch-label"><?= !$isRegistered ? 'ثبت‌نشده' : ($isApproved ? 'تأییدشده' : 'ردشده') ?></span>
                             </div>
                         </td>
-                        <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e($product['ApprovalModifiedAt'] ?? 'ثبت نشده') ?></td>
+                        <td class="approval-time" data-label="آخرین ثبت/ویرایش"><?= e(jalaliDateTime($product['ApprovalModifiedAt'] ?? null)) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
