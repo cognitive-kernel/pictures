@@ -34,7 +34,7 @@ try {
     foreach ($approvalRows as $row) $approvalMap[(string)$row['ProductCode']] = $row;
 
     $rows = [];
-    $counts = ['all' => 0, 'registered' => 0, 'rejected' => 0, 'rejected_or_unregistered' => 0];
+    $counts = ['all' => 0, 'registered' => 0, 'approved' => 0, 'rejected' => 0, 'rejected_or_unregistered' => 0];
     foreach ($products as $product) {
         $code = trim((string)$product['ProductCode']);
         $approval = $approvalMap[$code] ?? null;
@@ -44,6 +44,7 @@ try {
 
         $counts['all']++;
         if ($isRegistered) $counts['registered']++;
+        if ($isApproved) $counts['approved']++;
         if ($isRejected) $counts['rejected']++;
         if (!$isApproved) $counts['rejected_or_unregistered']++;
 
@@ -125,6 +126,7 @@ function reportUrl(array $changes = []): string {
         <section class="report-summary" aria-label="خلاصه گزارش">
             <div><span>همه کالاها</span><strong><?= number_format($counts['all']) ?></strong></div>
             <div><span>ثبت‌شده‌ها</span><strong><?= number_format($counts['registered']) ?></strong></div>
+            <div><span>تأییدشده‌ها</span><strong><?= number_format($counts['approved']) ?></strong></div>
             <div><span>ردشده‌ها</span><strong><?= number_format($counts['rejected']) ?></strong></div>
             <div><span>ردشده یا ثبت‌نشده</span><strong><?= number_format($counts['rejected_or_unregistered']) ?></strong></div>
         </section>
