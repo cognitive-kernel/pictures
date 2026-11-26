@@ -9,7 +9,7 @@ require_once __DIR__ . '/app/Database.php';
 require_once __DIR__ . '/app/ApprovalDatabase.php';
 
 $status = (string)($_GET['status'] ?? 'all');
-if (!in_array($status, ['all', 'unregistered', 'registered', 'rejected', 'rejected_or_unregistered'], true)) $status = 'all';
+if (!in_array($status, ['all', 'unregistered', 'registered', 'approved', 'rejected', 'rejected_or_unregistered'], true)) $status = 'all';
 $search = trim((string)($_GET['q'] ?? ''));
 if (mb_strlen($search, 'UTF-8') > 100) $search = mb_substr($search, 0, 100, 'UTF-8');
 
@@ -49,6 +49,7 @@ try {
 
         if ($status === 'unregistered' && $isRegistered) continue;
         if ($status === 'registered' && !$isRegistered) continue;
+        if ($status === 'approved' && !$isApproved) continue;
         if ($status === 'rejected' && !$isRejected) continue;
         if ($status === 'rejected_or_unregistered' && $isApproved) continue;
 
@@ -135,10 +136,11 @@ function reportUrl(array $changes = []): string {
             <div class="filter-status">
                 <label for="status">وضعیت ثبت کالا</label>
                 <select id="status" name="status">
-                    <option value="unregistered" <?= $status === 'unregistered' ? 'selected' : '' ?>>ثبت‌نشده</option>
-                    <option value="registered" <?= $status === 'registered' ? 'selected' : '' ?>>ثبت‌شده (تأییدشده و ردشده)</option>
-                    <option value="rejected" <?= $status === 'rejected' ? 'selected' : '' ?>>ردشده</option>
-                    <option value="rejected_or_unregistered" <?= $status === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده یا ثبت‌نشده</option>
+                    <option value="rejected_or_unregistered" <?= $status === 'rejected_or_unregistered' ? 'selected' : '' ?>>ردشده‌ها و تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="rejected" <?= $status === 'rejected' ? 'selected' : '' ?>>ردشده‌های ثبت‌شده</option>
+                    <option value="unregistered" <?= $status === 'unregistered' ? 'selected' : '' ?>>تعیین‌تکلیف‌نشده‌ها</option>
+                    <option value="registered" <?= $status === 'registered' ? 'selected' : '' ?>>ثبت‌شده‌ها (تأییدشده و ردشده)</option>
+                    <option value="approved" <?= $status === 'approved' ? 'selected' : '' ?>>تأییدشده‌ها</option>
                     <option value="all" <?= $status === 'all' ? 'selected' : '' ?>>همه کالاها</option>
                 </select>
             </div>
