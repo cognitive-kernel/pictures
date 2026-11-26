@@ -76,5 +76,6 @@ function jalaliDateTime(mixed $value): string
         $jd = 1 + (($days - 186) % 30);
     }
 
-    return sprintf('%04d/%02d/%02d %s', $jy, $jm, $jd, $date->format('H:i:s'));
+    $formatted = sprintf('%04d/%02d/%02d %s', $jy, $jm, $jd, $date->format('H:i:s'));
+    return strtr($formatted, '0123456789', '۰۱۲۳۴۵۶۷۸۹');
 }
