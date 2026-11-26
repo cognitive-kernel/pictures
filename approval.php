@@ -2,6 +2,7 @@
 declare(strict_types=1);
 use Pictures\ApprovalDatabase;
 require_once __DIR__ . '/app/ApprovalDatabase.php';
+require_once __DIR__ . '/app/helpers.php';
 header('Content-Type: application/json; charset=utf-8');
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 function respond(int $status, array $data): never {
@@ -28,7 +29,7 @@ try {
     $q->execute([':code'=>$code]);
     $modified = $q->fetchColumn();
     $pdo->commit();
-    respond(200, ['success'=>true,'modified_at'=>$modified]);
+    respond(200, ['success'=>true,'modified_at'=>jalaliDateTime($modified)]);
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     error_log('Pictures approval save failed: '.$e->getMessage());
