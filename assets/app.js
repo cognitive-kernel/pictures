@@ -74,7 +74,7 @@
             toggle.classList.toggle('is-pending', nextValue === '0');
             toggle.setAttribute('aria-checked', nextValue === '1' ? 'true' : 'false');
             const label = control.querySelector('.approval-switch-label');
-            if (label) label.textContent = nextValue === '1' ? 'تأیید شده' : 'تأیید نشده';
+            if (label) label.textContent = nextValue === '1' ? 'تأییدشده' : 'ردشده';
             const timeCell = control.closest('tr')?.querySelector('.approval-time');
             if (timeCell) timeCell.textContent = result.modified_at || '—';
         } catch (error) {
