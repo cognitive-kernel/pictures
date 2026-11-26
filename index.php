@@ -386,7 +386,7 @@ function sortLink(string $column, string $label, string $currentSort, string $cu
                         <td data-label="محل انبار"><?= e($product['WarehouseLocation'] ?? '—') ?></td>
                         <td data-label="مسیر کامل"><?= e($product['ProductPath'] ?? '—') ?></td>
                         <td data-label="وضعیت ثبت">
-                            <?php $isRegistered = $product['IsApproved'] !== null; $isApproved = $isRegistered && (int)$product['IsApproved'] === 1; ?>
+                            <?php $approvalState = $product['IsApproved'] ?? null; $isRegistered = $approvalState !== null; $isApproved = $isRegistered && (int)$approvalState === 1; ?>
                             <div class="approval-control" data-code="<?= e($product['Number'] ?? '') ?>" data-original="<?= !$isRegistered ? 'unregistered' : ($isApproved ? '1' : '0') ?>">
                                 <button type="button"
                                         class="approval-switch <?= $isApproved ? 'is-approved' : 'is-pending' ?>"
